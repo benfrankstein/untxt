@@ -1,0 +1,115 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+out/
+*.egg-info/
+.next/
+.nuxt/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Testing
+coverage/
+.nyc_output/
+*.cover
+*.coverage
+.pytest_cache/
+.hypothesis/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.cache/
+
+# Package manager lock files (optional, comment out if you want to commit them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Model files (large AI models)
+*.bin
+*.onnx
+*.pt
+*.pth
+*.safetensors
+models/
+
+# File uploads and OCR results
+uploads/
+results/
+/var/ocr-platform/
+
+# System and service files
+*.pid
+*.seed
+*.pid.lock
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compiled binaries
+*.exe
+*.dll
+*.dylib
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Local configuration
+config.local.js
+config.local.json
+settings.local.json
