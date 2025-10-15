@@ -13,6 +13,8 @@ __pycache__/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.database
+.env.redis
 
 # Build outputs
 dist/
@@ -30,6 +32,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Database logs
+database/logs/
+redis/logs/
 
 # OS files
 .DS_Store
@@ -57,7 +63,18 @@ coverage/
 *.db
 *.sqlite
 *.sqlite3
+
+# PostgreSQL
+*.sql.backup
+pgdata/
+postgres_data/
+
+# Redis
 dump.rdb
+appendonly.aof
+*.rdb
+*.aof
+redis_data/
 
 # Certificates and keys
 *.pem
