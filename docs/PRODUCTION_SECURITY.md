@@ -200,8 +200,8 @@ For small deployments or development:
 Environment="AWS_REGION=us-east-1"
 Environment="S3_BUCKET_NAME=untxt"
 Environment="KMS_KEY_ID=arn:aws:kms:us-east-1:543138172622:key/..."
-Environment="AWS_ACCESS_KEY_ID=AKIAX..."
-Environment="AWS_SECRET_ACCESS_KEY=stusVT..."
+Environment="AWS_ACCESS_KEY_ID=YOUR_KEY_HERE"
+Environment="AWS_SECRET_ACCESS_KEY=YOUR_SECRET_HERE"
 
 ExecStart=/usr/bin/python3 /opt/untxt/worker/run_worker.py
 ```
@@ -211,8 +211,8 @@ ExecStart=/usr/bin/python3 /opt/untxt/worker/run_worker.py
 # /etc/environment
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=untxt
-AWS_ACCESS_KEY_ID=AKIAX...
-AWS_SECRET_ACCESS_KEY=stusVT...
+AWS_ACCESS_KEY_ID=YOUR_KEY_HERE
+AWS_SECRET_ACCESS_KEY=YOUR_SECRET_HERE
 ```
 
 ⚠️ **Security Concerns**:
@@ -246,8 +246,8 @@ REDIS_PORT=6379
 ### **MUST Keep Secret** (never in git):
 ```bash
 # Secrets (use IAM roles, Secrets Manager, or secure env vars)
-AWS_ACCESS_KEY_ID=AKIAX...
-AWS_SECRET_ACCESS_KEY=stusVT...
+AWS_ACCESS_KEY_ID=YOUR_KEY_HERE
+AWS_SECRET_ACCESS_KEY=YOUR_SECRET_HERE
 DB_USER=ocr_platform_user
 DB_PASSWORD=ocr_platform_pass_prod
 ```
