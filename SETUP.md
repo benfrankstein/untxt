@@ -59,9 +59,6 @@ cp .env.example ../.env.database
 cd ../backend
 npm install
 
-cd ../frontend
-npm install
-
 cd ../worker
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -178,12 +175,9 @@ cd backend
 npm install
 ```
 
-#### Frontend (Next.js)
+#### Frontend (Static HTML/JS)
 
-```bash
-cd frontend
-npm install
-```
+The frontend uses only built-in Node.js modules - no npm install needed!
 
 #### Worker (Python)
 
