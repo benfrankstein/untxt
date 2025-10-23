@@ -56,14 +56,17 @@ Build the data layer first as it provides the foundation for all other services.
 3. Test basic operations (SET, GET, LPUSH, LPOP)
 4. Document Redis data structures and key naming conventions
 
-### File Storage
-1. Create local storage directory structure
-2. Set up permissions and access controls
-3. Implement file naming convention
-4. Test file read/write operations
-5. Plan cleanup and retention policies
+### File Storage (AWS S3)
+1. Set up AWS S3 bucket for file storage
+2. Configure KMS encryption for HIPAA compliance
+3. Create IAM user with minimal S3/KMS permissions
+4. Implement S3 client for upload/download operations
+5. Design hierarchical S3 key structure (uploads/, results/)
+6. Update database schema to include s3_key fields
+7. Test S3 upload/download with encryption
+8. Create temporary local directory for processing (auto-cleanup)
 
-**Milestone**: Data layer services running and verified with direct testing.
+**Milestone**: Data layer services running and verified with direct testing. ✅ PHASE 1 COMPLETE
 
 ---
 
@@ -85,18 +88,33 @@ Build the OCR processing engine that will consume tasks from the queue.
 4. Test model inference with sample images
 5. Optimize model performance (batch size, memory usage)
 
+### S3 Integration
+1. Implement S3 client module (s3_client.py)
+2. Add boto3 dependency for AWS operations
+3. Create methods for:
+   - upload_file() - Upload with KMS encryption
+   - download_file() - Download from S3
+   - upload_string() - Upload HTML content directly
+   - generate_s3_key() - Generate hierarchical paths
+4. Load AWS credentials from .env file
+5. Test S3 operations independently
+
 ### Task Processing Pipeline
-1. Implement Redis queue consumer
+1. Implement Redis queue consumer (BRPOP with timeout)
 2. Create task processing workflow:
-   - Fetch task from queue
-   - Load input file
-   - Run OCR (Qwen3 inference)
+   - Fetch task ID from Redis queue
+   - Retrieve task details from PostgreSQL (includes s3_key)
+   - **Download input file from S3 to temp directory**
+   - Run OCR (Qwen3 inference) on downloaded file
    - Parse and structure output
-   - Store results in PostgreSQL
-   - Update task status
-   - Publish completion notification
+   - **Upload result HTML directly to S3** (no local storage)
+   - **Store result metadata in PostgreSQL** (includes s3_result_key)
+   - Update task status to 'completed'
+   - **Clean up temporary files**
+   - Publish completion notification via Redis Pub/Sub
 3. Add error handling and retry logic
 4. Implement logging for debugging
+5. Configure dotenv to load .env file for AWS credentials
 
 ### Worker Testing
 1. Test with sample images of varying complexity
@@ -104,8 +122,17 @@ Build the OCR processing engine that will consume tasks from the queue.
 3. Check result accuracy and format
 4. Test error scenarios (corrupted files, timeouts)
 5. Monitor resource usage (CPU, memory)
+6. **Run S3 integration test** (test_s3_integration.sh):
+   - Upload test file to S3
+   - Create database records with S3 paths
+   - Enqueue task to Redis
+   - Verify worker downloads from S3
+   - Verify worker uploads result to S3
+   - Verify S3 paths stored in database
+   - Verify KMS encryption on files
+7. Download result HTML from S3 and verify content
 
-**Milestone**: Workers successfully process OCR tasks end-to-end.
+**Milestone**: Workers successfully process OCR tasks end-to-end with S3 storage. ✅ PHASE 2 COMPLETE
 
 ---
 
@@ -136,18 +163,34 @@ Build the API and WebSocket server that coordinates the system.
    - Retrieve results
 3. Set up Pub/Sub for real-time updates
 
+### S3 Integration (Backend)
+1. Install AWS SDK for Node.js (@aws-sdk/client-s3)
+2. Create S3 client module
+3. Implement file upload to S3:
+   - Receive file from multipart/form-data
+   - Generate S3 key (uploads/{user_id}/{date}/{file_id}/{filename})
+   - Upload to S3 with KMS encryption
+   - Store s3_key in files table
+4. Implement file download from S3:
+   - Generate pre-signed URLs for temporary access
+   - OR download and stream to client
+5. Implement file deletion from S3:
+   - Delete from S3 when task is deleted
+   - Clean up both input and result files
+
 ### REST API Endpoints
 1. Implement authentication endpoints:
    - POST /api/auth/login
    - POST /api/auth/register
    - POST /api/auth/logout
 2. Implement OCR task endpoints:
-   - POST /api/tasks (create new task, upload file)
-   - GET /api/tasks (list tasks)
-   - GET /api/tasks/:id (get task details)
-   - GET /api/tasks/:id/result (get OCR result)
-   - DELETE /api/tasks/:id (cancel/delete task)
+   - POST /api/tasks (upload file to S3, create task, enqueue to Redis)
+   - GET /api/tasks (list user's tasks)
+   - GET /api/tasks/:id (get task details with S3 paths)
+   - GET /api/tasks/:id/result (download result HTML from S3)
+   - DELETE /api/tasks/:id (delete files from S3, remove from DB)
 3. Add request validation and error handling
+4. Implement file upload validation (size, type, MIME check)
 
 ### WebSocket Server
 1. Set up WebSocket server alongside Express
@@ -158,12 +201,15 @@ Build the API and WebSocket server that coordinates the system.
 
 ### Backend Testing
 1. Test API endpoints with Postman or curl
-2. Verify task creation and queuing
-3. Test WebSocket connections and real-time updates
-4. Simulate full workflow: upload → process → receive results
-5. Test error handling and edge cases
+2. Verify file upload to S3 with KMS encryption
+3. Verify task creation and queuing to Redis
+4. Test WebSocket connections and real-time updates
+5. Simulate full workflow: upload → S3 → queue → process → S3 result → download
+6. Test error handling and edge cases
+7. Verify S3 file deletion when tasks are deleted
+8. Test pre-signed URL generation for file downloads
 
-**Milestone**: Backend API functional with WebSocket real-time updates.
+**Milestone**: Backend API functional with WebSocket real-time updates and S3 integration.
 
 ---
 
@@ -479,11 +525,12 @@ Continuously improve and scale the platform.
 ### Scaling Strategies
 1. Monitor growth and resource usage
 2. Implement scaling as needed:
-   - Add more worker instances
+   - Add more worker instances (already S3-ready)
    - Implement Redis Cluster for distributed queue
    - Use PostgreSQL replication for read scaling
-   - Move file storage to object storage (S3, MinIO)
+   - S3 storage already implemented with KMS encryption ✅
    - Deploy multiple backend instances with load balancing
+   - Implement S3 CloudFront CDN for faster downloads
 3. Test scaled architecture thoroughly
 
 ### Continuous Improvement
@@ -497,9 +544,9 @@ Continuously improve and scale the platform.
 
 ## Quick Reference: Development Order Summary
 
-1. **Data Layer**: PostgreSQL + Redis + File Storage
-2. **Processing Layer**: Flask Workers + Qwen3 OCR
-3. **Backend API**: Node.js REST API + WebSocket
+1. **Data Layer**: PostgreSQL + Redis + AWS S3 (KMS encrypted) ✅ COMPLETE
+2. **Processing Layer**: Flask Workers + Qwen3 OCR + S3 Integration ✅ COMPLETE
+3. **Backend API**: Node.js REST API + WebSocket + S3 Upload/Download ⏳ NEXT
 4. **Frontend**: Next.js Web Interface
 5. **Admin UI**: Electron Desktop Application
 6. **Reverse Proxy**: Nginx Configuration
@@ -507,5 +554,7 @@ Continuously improve and scale the platform.
 8. **Production Deployment**: Server setup and deployment
 9. **Post-Deployment**: Monitoring, backups, optimization
 10. **Iteration**: Continuous improvement and scaling
+
+**Current Status**: Phases 1-2 complete with full S3 integration. All files stored in S3 with KMS encryption. Worker processes tasks by downloading from S3, running OCR, and uploading results back to S3. Database stores S3 paths (no local file storage).
 
 Each phase should be completed and tested before moving to the next to ensure a stable, functional system at every stage.
