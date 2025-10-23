@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UNTXT - Document OCR</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="header-left">
+      <img src="logo.png" alt="UNTXT" class="logo">
+    </div>
+    <div class="header-right">
+      <!-- Save Indicator -->
+      <div id="saveIndicator" class="save-indicator"></div>
+      <span id="userInfo" class="user-email">Loading...</span>
+      <button class="btn-logout" id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="app-main">
+
+    <!-- VIEW 1: DASHBOARD (Default View) -->
+    <div id="dashboardView" class="view active">
+
+      <!-- Upload Section - Centered -->
+      <section class="upload-section-centered">
+        <h1>Upload Document</h1>
+        <p class="subtitle">Extract text from PDFs and images with enterprise-grade OCR</p>
+
+        <div class="upload-dropzone" id="uploadDropzone">
+          <input type="file" id="fileInput" accept=".pdf,image/*" hidden>
+          <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <p class="upload-text">Drop your document here</p>
+          <p class="upload-subtext">or click to browse</p>
+          <small class="upload-hint">PDF, PNG, JPG (Max 50MB)</small>
+        </div>
+
+        <div class="upload-status" id="uploadStatus"></div>
+      </section>
+
+      <!-- Recent Documents -->
+      <section class="recent-section">
+        <div class="section-header-inline">
+          <h2>Recent Documents</h2>
+          <div class="stats-inline" id="statsInline">
+            <span><strong id="statTotalInline">0</strong> total</span>
+            <span><strong id="statProcessingInline">0</strong> processing</span>
+            <span><strong id="statCompletedInline">0</strong> completed</span>
+          </div>
+        </div>
+
+        <div class="document-grid" id="documentGrid">
+          <!-- Document cards will be inserted here -->
+          <div class="empty-state">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <p>No documents yet</p>
+            <small>Upload your first document to get started</small>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- VIEW 2: DOCUMENT VIEWER (When file is selected) -->
+    <div id="viewerView" class="view">
+
+      <div class="viewer-container-full">
+
+        <!-- Content Area (Full Width) -->
+        <main class="viewer-main-full">
+
+          <!-- Back Button + Document Info Header -->
+          <div class="viewer-header">
+            <button class="btn-back" id="backBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              Back to Dashboard
+            </button>
+            <div class="document-info">
+              <h2 id="docTitle">document.pdf</h2>
+              <div class="doc-meta">
+                <span id="docSize">0 MB</span>
+                <span class="meta-separator">•</span>
+                <span id="docDate">Just now</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Processing Status -->
+          <div id="processingStatus" class="status-card processing">
+            <div class="status-icon-wrapper">
+              <div class="status-icon processing-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+            </div>
+            <h3>Processing your document...</h3>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="status-message" id="statusMessage">
+              Analyzing document structure...
+            </p>
+          </div>
+
+          <!-- Results (shown when complete) -->
+          <div id="resultsCard" class="results-container" style="display: none;">
+
+            <!-- Success Header -->
+            <div class="success-header">
+              <div class="success-icon-inline">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <h3>Processing complete!</h3>
+            </div>
+
+            <!-- Side-by-Side Cards -->
+            <div class="content-grid-cards">
+
+              <!-- Left Card: Document Preview -->
+              <div class="content-card">
+                <div class="card-header">
+                  <h4>Document Preview</h4>
+                  <div class="preview-controls">
+                    <!-- View Toggle -->
+                    <div class="preview-toggle">
+                      <button class="toggle-btn active" data-view="untxt" id="toggleUntxt">UNTXT</button>
+                      <button class="toggle-btn" data-view="original" id="toggleOriginal">Original</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <!-- Preview Container -->
+                  <div class="preview-container-card" id="previewContainerCard">
+                    <div class="preview-placeholder">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                      </svg>
+                      <p>Document Preview</p>
+                    </div>
+                  </div>
+
+                  <div class="preview-footer">
+                    <span id="versionInfo">Editing enabled - Changes auto-save</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Card: Extracted Text -->
+              <div class="content-card">
+                <div class="card-header">
+                  <h4>Extracted Text</h4>
+                  <button class="btn-copy-header" id="copyTextHeaderBtn" title="Copy text">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div class="card-body">
+                  <div class="text-preview-content" id="extractedTextPreview">
+                    <p class="text-loading">Loading text preview...</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bottom: Metrics and Actions -->
+            <div class="bottom-section">
+
+              <!-- Metrics -->
+              <div class="result-stats-inline">
+                <div class="result-stat-compact">
+                  <span class="stat-value" id="charCount">0</span>
+                  <span class="stat-label">characters</span>
+                </div>
+                <div class="result-stat-compact">
+                  <span class="stat-value" id="wordCount">0</span>
+                  <span class="stat-label">words</span>
+                </div>
+                <div class="result-stat-compact">
+                  <span class="stat-value" id="confidence">0%</span>
+                  <span class="stat-label">confidence</span>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="result-actions">
+                <button class="btn-primary" id="downloadResultBtn">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  Download Result
+                </button>
+                <button class="btn-secondary" id="downloadOriginalBtn">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                  Download Original
+                </button>
+                <button class="btn-danger" id="deleteTaskBtn">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  Delete
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Error State -->
+          <div id="errorCard" class="status-card error" style="display: none;">
+            <div class="status-icon-wrapper">
+              <div class="status-icon error-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              </div>
+            </div>
+            <h3>Processing failed</h3>
+            <p class="error-message" id="errorMessage">Something went wrong while processing your document.</p>
+            <div class="result-actions">
+              <button class="btn-primary" id="retryBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Try Again
+              </button>
+              <button class="btn-secondary" id="backToListBtn">Back to List</button>
+            </div>
+          </div>
+
+        </main>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- WebSocket Status (subtle indicator) -->
+  <div class="ws-indicator" id="wsIndicator">
+    <div class="ws-dot"></div>
+    <span class="ws-tooltip">Live updates</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

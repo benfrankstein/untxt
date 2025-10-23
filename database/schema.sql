@@ -134,6 +134,7 @@ CREATE INDEX idx_tasks_status_priority ON tasks(status, priority DESC) WHERE sta
 CREATE TABLE results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     task_id UUID UNIQUE NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
 
     -- OCR Output
     extracted_text TEXT,
@@ -162,6 +163,7 @@ CREATE TABLE results (
 );
 
 CREATE INDEX idx_results_task_id ON results(task_id);
+CREATE INDEX idx_results_user_id ON results(user_id);
 CREATE INDEX idx_results_created_at ON results(created_at DESC);
 CREATE INDEX idx_results_confidence ON results(confidence_score DESC);
 
@@ -171,7 +173,8 @@ CREATE INDEX idx_results_confidence ON results(confidence_score DESC);
 
 CREATE TABLE task_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     status task_status NOT NULL,
     message TEXT,
     metadata JSONB,
@@ -179,6 +182,7 @@ CREATE TABLE task_history (
 );
 
 CREATE INDEX idx_task_history_task_id ON task_history(task_id);
+CREATE INDEX idx_task_history_user_id ON task_history(user_id);
 CREATE INDEX idx_task_history_created_at ON task_history(created_at DESC);
 
 -- =============================================
@@ -220,8 +224,8 @@ CREATE OR REPLACE FUNCTION log_task_status_change()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status != OLD.status THEN
-        INSERT INTO task_history (task_id, status, message)
-        VALUES (NEW.id, NEW.status, 'Status changed from ' || OLD.status || ' to ' || NEW.status);
+        INSERT INTO task_history (task_id, user_id, status, message)
+        VALUES (NEW.id, NEW.user_id, NEW.status, 'Status changed from ' || OLD.status || ' to ' || NEW.status);
     END IF;
     RETURN NEW;
 END;
@@ -318,7 +322,7 @@ COMMENT ON TABLE user_sessions IS 'Tracks active login sessions for security and
 COMMENT ON TABLE files IS 'Stores metadata about uploaded files';
 COMMENT ON TABLE tasks IS 'Tracks OCR processing jobs and their status';
 COMMENT ON TABLE results IS 'Stores the output from completed OCR processing';
-COMMENT ON TABLE task_history IS 'Audit log for task status changes';
+COMMENT ON TABLE task_history IS 'Audit log for task status changes - preserved even after task deletion (task_id set to NULL)';
 
 COMMENT ON COLUMN tasks.priority IS 'Higher number = higher priority (0-10)';
 COMMENT ON COLUMN results.confidence_score IS 'OCR confidence score from 0.0 to 1.0';

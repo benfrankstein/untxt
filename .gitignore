@@ -9,12 +9,14 @@ __pycache__/
 
 # Environment variables
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.database
 .env.redis
+!.env.example
 
 # Build outputs
 dist/
@@ -130,3 +132,16 @@ docker-compose.override.yml
 config.local.js
 config.local.json
 settings.local.json
+
+# Development documentation (optional - comment out if you want to commit these)
+# ADMIN_*.md
+# CURRENT_STATUS.md
+# PHASE2_COMPLETE.md
+# *_COMPLETE.md
+# *_IMPLEMENTATION.md
+# *_AUDIT*.md
+
+# Output and temporary files
+output/
+pids/
+*.pid

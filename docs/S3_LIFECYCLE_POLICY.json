@@ -1,0 +1,44 @@
+{
+  "Rules": [
+    {
+      "Id": "DeleteTaggedObjects",
+      "Status": "Enabled",
+      "Filter": {
+        "Tag": {
+          "Key": "deleted",
+          "Value": "true"
+        }
+      },
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 30
+      }
+    },
+    {
+      "Id": "TransitionToGlacierBeforeDeletion",
+      "Status": "Enabled",
+      "Filter": {
+        "Tag": {
+          "Key": "deleted",
+          "Value": "true"
+        }
+      },
+      "Transitions": [
+        {
+          "Days": 7,
+          "StorageClass": "GLACIER"
+        }
+      ]
+    },
+    {
+      "Id": "CleanupIncompleteMultipartUploads",
+      "Status": "Enabled",
+      "Filter": {},
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

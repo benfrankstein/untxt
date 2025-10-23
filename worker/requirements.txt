@@ -1,0 +1,15 @@
+# OCR Worker Dependencies
+# Phase 2: Processing Layer
+
+# Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Redis Client
+redis==5.0.1
+
+# PostgreSQL Client
+psycopg2-binary==2.9.9
+
+# Utilities
+python-dotenv==1.0.0

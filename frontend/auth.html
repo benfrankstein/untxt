@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login / Sign Up - OCR Platform</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .auth-container {
+      background: #2a2a2a;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 20px rgba(199, 255, 0, 0.1);
+      max-width: 450px;
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid #3a3a3a;
+    }
+
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 20px;
+      background: #1f1f1f;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      color: #888;
+      transition: all 0.3s;
+    }
+
+    .auth-tab.active {
+      background: #2a2a2a;
+      color: #c7ff00;
+      border-bottom: 3px solid #c7ff00;
+      box-shadow: 0 0 10px rgba(199, 255, 0, 0.3);
+    }
+
+    .auth-tab:hover {
+      background: #252525;
+      color: #c7ff00;
+    }
+
+    .auth-tab.active:hover {
+      background: #2a2a2a;
+    }
+
+    .auth-form-container {
+      padding: 40px;
+    }
+
+    .auth-form {
+      display: none;
+    }
+
+    .auth-form.active {
+      display: block;
+      animation: fadeIn 0.3s;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #c7ff00;
+      font-size: 14px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #3a3a3a;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: all 0.3s;
+      background: #1f1f1f;
+      color: #e0e0e0;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: #c7ff00;
+      box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.2), 0 0 10px rgba(199, 255, 0, 0.1);
+    }
+
+    .form-input.error {
+      border-color: #ff4444;
+    }
+
+    .form-error {
+      color: #ff6666;
+      font-size: 13px;
+      margin-top: 6px;
+      display: none;
+    }
+
+    .form-error.visible {
+      display: block;
+    }
+
+    .password-requirements {
+      background: #1f1f1f;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .requirement {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      color: #666;
+    }
+
+    .requirement.met {
+      color: #c7ff00;
+    }
+
+    .requirement::before {
+      content: '✗';
+      margin-right: 8px;
+      font-weight: bold;
+    }
+
+    .requirement.met::before {
+      content: '✓';
+    }
+
+    .form-button {
+      width: 100%;
+      padding: 14px;
+      background: #c7ff00;
+      color: #1a1a1a;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .form-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(199, 255, 0, 0.4), 0 0 20px rgba(199, 255, 0, 0.3);
+      background: #d4ff33;
+    }
+
+    .form-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .alert.visible {
+      display: block;
+      animation: slideDown 0.3s;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .alert.success {
+      background: rgba(199, 255, 0, 0.15);
+      color: #c7ff00;
+      border: 1px solid #c7ff00;
+    }
+
+    .alert.error {
+      background: rgba(255, 68, 68, 0.15);
+      color: #ff6666;
+      border: 1px solid #ff4444;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.3s;
+      width: 24px;
+      height: 24px;
+    }
+
+    .password-toggle svg {
+      width: 100%;
+      height: 100%;
+      stroke: #c7ff00;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: all 0.3s;
+    }
+
+    .password-toggle:hover svg {
+      stroke: #d4ff33;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .auth-logo {
+      text-align: center;
+      padding: 20px 40px 15px;
+      background: #2a2a2a;
+    }
+
+    .auth-logo img {
+      width: 200px;
+      height: auto;
+      max-width: 80%;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container">
+    <!-- Logo -->
+    <div class="auth-logo">
+      <img src="logo.png" alt="untxt Logo">
+    </div>
+
+    <!-- Tabs -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Login</button>
+      <button class="auth-tab" data-tab="signup">Sign Up</button>
+    </div>
+
+    <div class="auth-form-container">
+      <!-- Alert Messages -->
+      <div id="alert" class="alert"></div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form active">
+        <div class="form-group">
+          <label class="form-label" for="loginEmailOrUsername">Email or Username</label>
+          <input
+            type="text"
+            id="loginEmailOrUsername"
+            class="form-input"
+            placeholder="Enter your email or username"
+            required
+          />
+          <div class="form-error" id="loginEmailOrUsernameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Password</label>
+          <div class="input-wrapper">
+            <input
+              type="password"
+              id="loginPassword"
+              class="form-input"
+              placeholder="Enter your password"
+              required
+            />
+            <span class="password-toggle" onclick="togglePassword('loginPassword')">
+              <svg viewBox="0 0 24 24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </span>
+          </div>
+          <div class="form-error" id="loginPasswordError"></div>
+        </div>
+
+        <button type="submit" class="form-button" id="loginButton">
+          Log In
+        </button>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signupForm" class="auth-form">
+        <div class="form-group">
+          <label class="form-label" for="signupEmail">Email</label>
+          <input
+            type="email"
+            id="signupEmail"
+            class="form-input"
+            placeholder="Enter your email"
+            required
+          />
+          <div class="form-error" id="signupEmailError"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signupUsername">Username</label>
+          <input
+            type="text"
+            id="signupUsername"
+            class="form-input"
+            placeholder="Choose a username"
+            required
+          />
+          <div class="form-error" id="signupUsernameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signupPassword">Password</label>
+          <div class="input-wrapper">
+            <input
+              type="password"
+              id="signupPassword"
+              class="form-input"
+              placeholder="Create a strong password"
+              required
+            />
+            <span class="password-toggle" onclick="togglePassword('signupPassword')">
+              <svg viewBox="0 0 24 24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </span>
+          </div>
+          <div class="form-error" id="signupPasswordError"></div>
+
+          <!-- Password Requirements -->
+          <div class="password-requirements">
+            <div class="requirement" id="req-length">At least 12 characters</div>
+            <div class="requirement" id="req-uppercase">One uppercase letter</div>
+            <div class="requirement" id="req-lowercase">One lowercase letter</div>
+            <div class="requirement" id="req-number">One number</div>
+            <div class="requirement" id="req-special">One special character (!@#$%^&*()_+-=[]{}|;:,.<>?)</div>
+          </div>
+        </div>
+
+        <button type="submit" class="form-button" id="signupButton">
+          Create Account
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="auth.js"></script>
+</body>
+</html>
