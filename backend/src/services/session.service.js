@@ -12,6 +12,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const dbService = require('./db.service');
+const auditService = require('./audit.service');
 
 /**
  * Create a new session record
@@ -124,15 +125,26 @@ async function destroyAllUserSessions(userId, reason = 'logout_all') {
 
 /**
  * Clean up expired sessions (run periodically)
+ * Logs each expired session to audit_logs for HIPAA compliance
  * @returns {Promise<number>} - Number of sessions cleaned up
  */
 async function cleanupExpiredSessions() {
   try {
-    const count = await dbService.deleteExpiredSessions();
-    if (count > 0) {
-      console.log(`✓ Cleaned up ${count} expired sessions`);
+    const expiredSessions = await dbService.deleteExpiredSessions();
+
+    if (expiredSessions.length > 0) {
+      // Log each expired session to audit_logs for HIPAA compliance
+      for (const session of expiredSessions) {
+        await auditService.logSessionTimeout(
+          session.user_id,
+          session.session_token
+        );
+      }
+
+      console.log(`✓ Cleaned up ${expiredSessions.length} expired sessions (logged to audit_logs)`);
     }
-    return count;
+
+    return expiredSessions.length;
   } catch (error) {
     console.error('Error cleaning up expired sessions:', error);
     return 0;

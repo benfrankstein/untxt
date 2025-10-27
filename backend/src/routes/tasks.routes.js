@@ -530,8 +530,25 @@ router.get('/:taskId/result', async (req, res) => {
  */
 router.get('/:taskId/download', async (req, res) => {
   const startTime = Date.now();
-  const userId = req.body.userId || req.headers['x-user-id'];
+  const userId = req.body.userId || req.headers['x-user-id']; // Use x-user-id header like other endpoints
   const { taskId } = req.params;
+
+  // Debug logging
+  console.log('📥 Download request:', {
+    taskId,
+    userId,
+    header: req.headers['x-user-id'],
+    body: req.body.userId
+  });
+
+  // Check authentication
+  if (!userId) {
+    console.error('❌ No userId provided');
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required',
+    });
+  }
 
   try {
     // 1. Get task details

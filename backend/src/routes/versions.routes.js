@@ -75,6 +75,21 @@ router.post('/:taskId/save', async (req, res) => {
     // Check edit permission
     const editCheck = await dbService.canUserEditDocument(taskId, userId);
     if (!editCheck.canEdit) {
+      // Log failed access attempt
+      await dbService.logDocumentEdit({
+        versionId: null,
+        taskId,
+        userId,
+        username: 'unknown',
+        action: 'access_denied',
+        changesDescription: `Auto-save attempt denied: ${editCheck.reason}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        sessionId,
+        accessGranted: false,
+        accessReason: editCheck.reason
+      });
+
       return res.status(403).json({
         success: false,
         error: 'You do not have permission to edit this document',
@@ -115,6 +130,21 @@ router.post('/:taskId/save', async (req, res) => {
       // Increment session counter
       await dbService.incrementSessionVersions(sessionId);
 
+      // Log to audit trail
+      await dbService.logDocumentEdit({
+        versionId: version.id,
+        taskId,
+        userId,
+        username: task.username || 'unknown',
+        action: 'snapshot',
+        changesDescription: `Created new snapshot (> 5 min since last save)`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        sessionId,
+        accessGranted: true,
+        accessReason: task.user_id === userId ? 'owner' : 'permitted_user'
+      });
+
       res.json({
         success: true,
         version: {
@@ -132,6 +162,21 @@ router.post('/:taskId/save', async (req, res) => {
         htmlContent,
         characterCount,
         wordCount
+      });
+
+      // Log to audit trail
+      await dbService.logDocumentEdit({
+        versionId: updated.id,
+        taskId,
+        userId,
+        username: task.username || 'unknown',
+        action: 'auto_save',
+        changesDescription: `Auto-save update (< 5 min window)`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        sessionId,
+        accessGranted: true,
+        accessReason: task.user_id === userId ? 'owner' : 'permitted_user'
       });
 
       res.json({

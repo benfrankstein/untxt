@@ -17,20 +17,31 @@
       <!-- Save Indicator -->
       <div id="saveIndicator" class="save-indicator"></div>
       <span id="userInfo" class="user-email">Loading...</span>
+      <button class="btn-account" id="accountBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <span>Account</span>
+      </button>
       <button class="btn-logout" id="logoutBtn">Logout</button>
     </div>
   </header>
 
-  <!-- MAIN CONTENT -->
-  <main class="app-main">
-
-    <!-- VIEW 1: DASHBOARD (Default View) -->
-    <div id="dashboardView" class="view active">
-
-      <!-- Upload Section - Centered -->
-      <section class="upload-section-centered">
-        <h1>Upload Document</h1>
-        <p class="subtitle">Extract text from PDFs and images with enterprise-grade OCR</p>
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Upload Document</h2>
+        <button class="modal-close" id="closeUploadModal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Extract text from PDFs and images with enterprise-grade OCR</p>
 
         <div class="upload-dropzone" id="uploadDropzone">
           <input type="file" id="fileInput" accept=".pdf,image/*" hidden>
@@ -45,16 +56,88 @@
         </div>
 
         <div class="upload-status" id="uploadStatus"></div>
-      </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <main class="app-main">
+
+    <!-- Folders Sidebar -->
+    <aside class="folders-sidebar" id="foldersSidebar">
+      <div class="folders-header">
+        <div class="folders-header-content">
+          <button class="btn-back-folders" id="backToFoldersBtn" title="Back to folders" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"></path>
+            </svg>
+          </button>
+          <h3 id="foldersHeaderTitle">Folders</h3>
+        </div>
+        <button class="btn-new-folder" id="newFolderBtn" title="New folder">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="folders-list" id="foldersList">
+        <!-- All Documents (default) -->
+        <div class="folder-item all-documents active" data-folder-id="all">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>All Documents</span>
+          <span class="folder-count" id="allDocsCount">0</span>
+        </div>
+        <!-- User folders will be inserted here -->
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+
+    <!-- VIEW 1: DASHBOARD (Default View) -->
+    <div id="dashboardView" class="view active">
 
       <!-- Recent Documents -->
       <section class="recent-section">
         <div class="section-header-inline">
           <h2>Recent Documents</h2>
-          <div class="stats-inline" id="statsInline">
-            <span><strong id="statTotalInline">0</strong> total</span>
-            <span><strong id="statProcessingInline">0</strong> processing</span>
-            <span><strong id="statCompletedInline">0</strong> completed</span>
+          <div class="header-controls">
+            <button class="btn-upload" id="uploadBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Upload</span>
+            </button>
+            <div class="stats-inline" id="statsInline">
+              <span><strong id="statTotalInline">0</strong> total</span>
+              <span><strong id="statProcessingInline">0</strong> processing</span>
+              <span><strong id="statCompletedInline">0</strong> completed</span>
+            </div>
+            <div class="view-toggle">
+              <button class="view-btn active" id="gridViewBtn" title="Grid View">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </button>
+              <button class="view-btn" id="listViewBtn" title="List View">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -81,7 +164,7 @@
         <!-- Content Area (Full Width) -->
         <main class="viewer-main-full">
 
-          <!-- Back Button + Document Info Header -->
+          <!-- Back Button Header -->
           <div class="viewer-header">
             <button class="btn-back" id="backBtn">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -89,14 +172,6 @@
               </svg>
               Back to Dashboard
             </button>
-            <div class="document-info">
-              <h2 id="docTitle">document.pdf</h2>
-              <div class="doc-meta">
-                <span id="docSize">0 MB</span>
-                <span class="meta-separator">•</span>
-                <span id="docDate">Just now</span>
-              </div>
-            </div>
           </div>
 
           <!-- Processing Status -->
@@ -121,21 +196,31 @@
           <!-- Results (shown when complete) -->
           <div id="resultsCard" class="results-container" style="display: none;">
 
-            <!-- Success Header -->
-            <div class="success-header">
-              <div class="success-icon-inline">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
+            <!-- Success Header with Document Info -->
+            <div class="success-header-combined">
+              <div class="success-status">
+                <div class="success-icon-inline">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </div>
+                <h3>Processing complete!</h3>
               </div>
-              <h3>Processing complete!</h3>
+              <div class="document-info-inline">
+                <h2 id="docTitle">document.pdf</h2>
+                <div class="doc-meta">
+                  <span id="docSize">0 MB</span>
+                  <span class="meta-separator">•</span>
+                  <span id="docDate">Just now</span>
+                </div>
+              </div>
             </div>
 
-            <!-- Side-by-Side Cards -->
-            <div class="content-grid-cards">
+            <!-- Document Preview with Optional Side Panel -->
+            <div class="document-viewer-layout">
 
-              <!-- Left Card: Document Preview -->
-              <div class="content-card">
+              <!-- Main Document Preview -->
+              <div class="content-card document-preview-main">
                 <div class="card-header">
                   <h4>Document Preview</h4>
                   <div class="preview-controls">
@@ -144,10 +229,18 @@
                       <button class="toggle-btn active" data-view="untxt" id="toggleUntxt">UNTXT</button>
                       <button class="toggle-btn" data-view="original" id="toggleOriginal">Original</button>
                     </div>
+                    <!-- Toggle Extracted Text Panel -->
+                    <button class="btn-toggle-text" id="toggleExtractedText" title="Toggle Extracted Text">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6h16M4 12h16M4 18h16"></path>
+                      </svg>
+                      <span>Extracted Text</span>
+                    </button>
                   </div>
                 </div>
                 <div class="card-body">
-                  <!-- Preview Container -->
+                  <!-- Preview Container (HIPAA-Compliant In-Memory Caching) -->
+                  <!-- Shows UNTXT HTML by default, Original PDF on demand -->
                   <div class="preview-container-card" id="previewContainerCard">
                     <div class="preview-placeholder">
                       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -157,23 +250,27 @@
                       <p>Document Preview</p>
                     </div>
                   </div>
-
-                  <div class="preview-footer">
-                    <span id="versionInfo">Editing enabled - Changes auto-save</span>
-                  </div>
                 </div>
               </div>
 
-              <!-- Right Card: Extracted Text -->
-              <div class="content-card">
+              <!-- Side Panel: Extracted Text (Hidden by default) -->
+              <div class="content-card extracted-text-panel hidden" id="extractedTextPanel">
                 <div class="card-header">
                   <h4>Extracted Text</h4>
-                  <button class="btn-copy-header" id="copyTextHeaderBtn" title="Copy text">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                  </button>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn-copy-header" id="copyTextHeaderBtn" title="Copy text">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                    </button>
+                    <button class="btn-close-panel" id="closeExtractedText" title="Close">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div class="card-body">
                   <div class="text-preview-content" id="extractedTextPreview">
@@ -265,7 +362,47 @@
 
     </div>
 
+    </div> <!-- End .main-content -->
+
   </main>
+
+  <!-- New Folder Modal -->
+  <div class="modal-overlay" id="newFolderModal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2 id="folderModalTitle">New Folder</h2>
+        <button class="modal-close" id="closeNewFolderModal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="folderForm">
+          <div class="form-group">
+            <label for="folderName">Folder Name *</label>
+            <input type="text" id="folderName" name="folderName" maxlength="255" required placeholder="e.g., Invoices, Contracts">
+          </div>
+          <div class="form-group">
+            <label for="folderDescription">Description</label>
+            <textarea id="folderDescription" name="folderDescription" rows="3" placeholder="Optional description"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="folderColor">Color</label>
+            <div class="color-picker">
+              <input type="color" id="folderColor" name="folderColor" value="#c7ff00">
+              <span class="color-label">Choose a color for this folder</span>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" id="cancelFolderBtn">Cancel</button>
+            <button type="submit" class="btn-primary" id="saveFolderBtn">Create Folder</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <!-- WebSocket Status (subtle indicator) -->
   <div class="ws-indicator" id="wsIndicator">

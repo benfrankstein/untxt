@@ -154,7 +154,7 @@ async function comparePassword(password, hash) {
  * @param {Object} userData - {email, username, password}
  * @returns {Promise<Object>} - User object (without password)
  */
-async function registerUser({ email, username, password }) {
+async function registerUser({ email, username, password, firstName, lastName, phoneNumber }) {
   // Validate email
   if (!email || !validateEmail(email)) {
     throw new Error('Invalid email address');
@@ -170,6 +170,11 @@ async function registerUser({ email, username, password }) {
   const passwordValidation = validatePassword(password);
   if (!passwordValidation.valid) {
     throw new Error(passwordValidation.errors[0]);
+  }
+
+  // Validate required fields
+  if (!firstName || !lastName) {
+    throw new Error('First name and last name are required');
   }
 
   // Check if email already exists
@@ -194,6 +199,9 @@ async function registerUser({ email, username, password }) {
     email: email.toLowerCase().trim(),
     username: username.trim(),
     password_hash: passwordHash,
+    first_name: firstName.trim(),
+    last_name: lastName.trim(),
+    phone_number: phoneNumber ? phoneNumber.trim() : null,
     role: 'user'
   });
 
@@ -264,6 +272,24 @@ function getPasswordRequirements() {
   };
 }
 
+/**
+ * Get user profile by ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} - User object (without password)
+ */
+async function getUserProfile(userId) {
+  const user = await dbService.getUserById(userId);
+
+  if (!user) {
+    return null;
+  }
+
+  // Remove password hash from response
+  const { password_hash, ...userWithoutPassword } = user;
+
+  return userWithoutPassword;
+}
+
 module.exports = {
   validatePassword,
   validateEmail,
@@ -272,5 +298,6 @@ module.exports = {
   comparePassword,
   registerUser,
   authenticateUser,
-  getPasswordRequirements
+  getPasswordRequirements,
+  getUserProfile
 };

@@ -12,7 +12,7 @@ const pdfService = require('../services/pdf.service');
 router.post('/:taskId/start', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { sessionId } = req.body;
+    const { sessionId, viewType } = req.body;
     const userId = req.headers['x-user-id'];
 
     if (!sessionId) {
@@ -41,6 +41,16 @@ router.post('/:taskId/start', async (req, res) => {
       });
     }
 
+    // Determine access reason based on viewType (if provided) or edit check
+    let accessReason;
+    if (viewType) {
+      // View-only sessions (original_view, view_only, etc.)
+      accessReason = viewType;
+    } else {
+      // Edit sessions - use owner/granted_permission
+      accessReason = editCheck.reason;
+    }
+
     // Create or get edit session
     const session = await dbService.createOrGetEditSession({
       taskId,
@@ -50,7 +60,7 @@ router.post('/:taskId/start', async (req, res) => {
       draftId: null,  // No draft ID in Google Docs flow
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-      accessReason: editCheck.reason
+      accessReason: accessReason
     });
 
     res.json({
@@ -82,8 +92,8 @@ router.post('/:taskId/start', async (req, res) => {
 router.post('/:taskId/end', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { sessionId, htmlContent, outcome } = req.body;
-    const userId = req.headers['x-user-id'];
+    const { sessionId, htmlContent, outcome, userId: bodyUserId } = req.body;
+    const userId = bodyUserId || req.headers['x-user-id'];
 
     if (!sessionId) {
       return res.status(400).json({
@@ -208,6 +218,26 @@ router.post('/:taskId/download-result', async (req, res) => {
         success: false,
         error: 'Task not found'
       });
+    }
+
+    // Ensure session exists for audit trail (HIPAA compliance)
+    // If sessionId is a temporary download ID, create a session record
+    if (sessionId.startsWith('download-')) {
+      try {
+        await dbService.createOrGetEditSession({
+          taskId,
+          userId,
+          username: task.username || 'unknown',
+          sessionId,
+          draftId: null,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          accessReason: 'download_only'
+        });
+        console.log(`📝 Created download-only session: ${sessionId}`);
+      } catch (err) {
+        console.warn('Session may already exist:', err.message);
+      }
     }
 
     // Convert HTML to PDF

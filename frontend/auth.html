@@ -314,6 +314,30 @@
       <!-- Signup Form -->
       <form id="signupForm" class="auth-form">
         <div class="form-group">
+          <label class="form-label" for="signupFirstName">First Name</label>
+          <input
+            type="text"
+            id="signupFirstName"
+            class="form-input"
+            placeholder="Enter your first name"
+            required
+          />
+          <div class="form-error" id="signupFirstNameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signupLastName">Last Name</label>
+          <input
+            type="text"
+            id="signupLastName"
+            class="form-input"
+            placeholder="Enter your last name"
+            required
+          />
+          <div class="form-error" id="signupLastNameError"></div>
+        </div>
+
+        <div class="form-group">
           <label class="form-label" for="signupEmail">Email</label>
           <input
             type="email"
@@ -323,6 +347,17 @@
             required
           />
           <div class="form-error" id="signupEmailError"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signupPhoneNumber">Phone Number</label>
+          <input
+            type="tel"
+            id="signupPhoneNumber"
+            class="form-input"
+            placeholder="Enter your phone number (optional)"
+          />
+          <div class="form-error" id="signupPhoneNumberError"></div>
         </div>
 
         <div class="form-group">

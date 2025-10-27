@@ -15,13 +15,23 @@ const auditService = require('../services/audit.service');
  */
 router.post('/signup', async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const { email, username, password, firstName, lastName, phoneNumber } = req.body;
+
+    // Debug: Log received data
+    console.log('📝 Signup request received:', {
+      email,
+      username,
+      firstName,
+      lastName,
+      phoneNumber,
+      hasPassword: !!password
+    });
 
     // Validate required fields
-    if (!email || !username || !password) {
+    if (!email || !username || !password || !firstName || !lastName) {
       return res.status(400).json({
         success: false,
-        error: 'Email, username, and password are required'
+        error: 'Email, username, password, first name, and last name are required'
       });
     }
 
@@ -29,7 +39,10 @@ router.post('/signup', async (req, res) => {
     const user = await authService.registerUser({
       email,
       username,
-      password
+      password,
+      firstName,
+      lastName,
+      phoneNumber
     });
 
     const ipAddress = sessionService.getClientIP(req);
@@ -50,7 +63,7 @@ router.post('/signup', async (req, res) => {
       sessionToken: req.sessionID,
       ipAddress,
       userAgent,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
     });
 
     // Audit log - account created
@@ -128,7 +141,7 @@ router.post('/login', async (req, res) => {
       sessionToken: req.sessionID,
       ipAddress,
       userAgent,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
     });
 
     // Audit log - login success
@@ -315,6 +328,53 @@ router.get('/password-requirements', (req, res) => {
     success: true,
     data: authService.getPasswordRequirements()
   });
+});
+
+/**
+ * GET /api/auth/profile
+ * Get current user's profile information
+ */
+router.get('/profile', async (req, res) => {
+  try {
+    if (!req.session || !req.session.userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const user = await authService.getUserProfile(req.session.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          phoneNumber: user.phone_number,
+          role: user.role,
+          createdAt: user.created_at,
+          lastLogin: user.last_login
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error getting user profile:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve profile'
+    });
+  }
 });
 
 module.exports = router;

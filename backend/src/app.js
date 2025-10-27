@@ -15,6 +15,7 @@ const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const versionsRoutes = require('./routes/versions.routes');
 const sessionsRoutes = require('./routes/sessions.routes');
+const foldersRoutes = require('./routes/folders.routes');
 
 const app = express();
 
@@ -36,7 +37,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true, // Prevent XSS
-    maxAge: 30 * 60 * 1000, // 30 minutes of INACTIVITY
+    maxAge: 15 * 60 * 1000, // 15 minutes of INACTIVITY
     sameSite: 'lax' // CSRF protection
   }
 }));
@@ -81,6 +82,7 @@ app.get('/health', async (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/folders', foldersRoutes); // Project folder organization
 app.use('/api/admin', adminRoutes); // Access control & revocation endpoints
 app.use('/api/versions', versionsRoutes); // Document versioning & editing
 app.use('/api/sessions', sessionsRoutes); // Google Docs flow - edit sessions
@@ -199,6 +201,18 @@ async function initializeServices() {
       }
     });
     console.log('✓ Subscribed to Redis database changes channel');
+
+    // Start periodic cleanup job for orphaned sessions (Layer 3)
+    // Runs every 5 minutes to close sessions that timed out due to inactivity
+    const CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    setInterval(async () => {
+      try {
+        await dbService.closeOrphanedEditSessions(15); // Close sessions inactive > 15 min
+      } catch (error) {
+        console.error('Failed to run orphaned session cleanup:', error);
+      }
+    }, CLEANUP_INTERVAL);
+    console.log('✓ Orphaned session cleanup job started (runs every 5 minutes)');
 
     console.log('All services initialized successfully');
   } catch (error) {

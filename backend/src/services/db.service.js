@@ -138,6 +138,7 @@ class DatabaseService {
         t.*,
         f.original_filename as filename,
         f.mime_type,
+        f.file_size,
         f.s3_key,
         r.s3_result_key,
         r.extracted_text,
@@ -164,7 +165,8 @@ class DatabaseService {
       SELECT
         t.*,
         f.original_filename as filename,
-        f.mime_type
+        f.mime_type,
+        f.file_size
       FROM tasks t
       LEFT JOIN files f ON t.file_id = f.id
       WHERE t.user_id = $1
@@ -291,18 +293,21 @@ class DatabaseService {
       email,
       username,
       password_hash,
-      role = 'user'
+      role = 'user',
+      first_name,
+      last_name,
+      phone_number
     } = userData;
 
     const query = `
       INSERT INTO users (
-        id, email, username, password_hash, role, is_active, email_verified
+        id, email, username, password_hash, role, is_active, email_verified, first_name, last_name, phone_number
       )
-      VALUES ($1, $2, $3, $4, $5, true, false)
-      RETURNING id, email, username, role, is_active, email_verified, created_at, updated_at;
+      VALUES ($1, $2, $3, $4, $5, true, false, $6, $7, $8)
+      RETURNING id, email, username, role, is_active, email_verified, first_name, last_name, phone_number, created_at, updated_at;
     `;
 
-    const values = [id, email, username, password_hash, role];
+    const values = [id, email, username, password_hash, role, first_name, last_name, phone_number];
     const result = await this.pool.query(query, values);
     return result.rows[0];
   }
@@ -395,7 +400,7 @@ class DatabaseService {
       UPDATE user_sessions
       SET
         last_activity = NOW(),
-        expires_at = NOW() + INTERVAL '30 minutes'
+        expires_at = NOW() + INTERVAL '15 minutes'
       WHERE session_token = $1
       RETURNING id;
     `;
@@ -436,11 +441,25 @@ class DatabaseService {
 
   /**
    * Delete expired sessions (cleanup job)
+   * Returns expired sessions info for logging before deletion
    */
   async deleteExpiredSessions() {
-    const query = 'DELETE FROM user_sessions WHERE expires_at <= NOW();';
-    const result = await this.pool.query(query);
-    return result.rowCount;
+    // First, get expired sessions for logging
+    const selectQuery = `
+      SELECT id, user_id, session_token, ip_address, user_agent, expires_at, last_activity
+      FROM user_sessions
+      WHERE expires_at <= NOW();
+    `;
+    const selectResult = await this.pool.query(selectQuery);
+    const expiredSessions = selectResult.rows;
+
+    // Then delete them
+    if (expiredSessions.length > 0) {
+      const deleteQuery = 'DELETE FROM user_sessions WHERE expires_at <= NOW();';
+      await this.pool.query(deleteQuery);
+    }
+
+    return expiredSessions;
   }
 
   /**
@@ -649,22 +668,22 @@ class DatabaseService {
   }
 
   /**
-   * Get file access control records for a user
+   * Get file access control records for a user (now using task_permissions)
    */
   async getUserFileAccessControls(userId) {
     const query = `
       SELECT
-        fac.*,
+        tp.*,
         t.id AS task_id,
         f.original_filename,
         f.s3_key,
         admin.username AS revoked_by_username
-      FROM file_access_control fac
-      JOIN tasks t ON fac.task_id = t.id
+      FROM task_permissions tp
+      JOIN tasks t ON tp.task_id = t.id
       JOIN files f ON t.file_id = f.id
-      LEFT JOIN users admin ON fac.revoked_by = admin.id
-      WHERE fac.user_id = $1
-      ORDER BY fac.created_at DESC;
+      LEFT JOIN users admin ON tp.revoked_by = admin.id
+      WHERE tp.user_id = $1
+      ORDER BY tp.created_at DESC;
     `;
     const result = await this.pool.query(query, [userId]);
     return result.rows;
@@ -1015,44 +1034,24 @@ class DatabaseService {
    * Check if user can edit a document
    */
   async canUserEditDocument(taskId, userId) {
-    // Check if user owns the task
-    const taskQuery = `
-      SELECT user_id FROM tasks WHERE id = $1;
-    `;
-    const taskResult = await this.pool.query(taskQuery, [taskId]);
+    // Use unified permission check function
+    const query = `SELECT check_task_permission($1, $2, 'edit') as can_edit;`;
+    const result = await this.pool.query(query, [userId, taskId]);
 
-    if (taskResult.rows.length === 0) {
-      return { canEdit: false, reason: 'Task not found' };
-    }
+    if (result.rows[0].can_edit) {
+      // Check if it's because they're the owner
+      const ownerQuery = `SELECT user_id FROM tasks WHERE id = $1;`;
+      const ownerResult = await this.pool.query(ownerQuery, [taskId]);
 
-    const task = taskResult.rows[0];
+      if (ownerResult.rows.length === 0) {
+        return { canEdit: false, reason: 'Task not found' };
+      }
 
-    // Owner can always edit
-    if (task.user_id === userId) {
-      return { canEdit: true, reason: 'owner' };
-    }
-
-    // Check if user is admin
-    const userQuery = `
-      SELECT role FROM users WHERE id = $1;
-    `;
-    const userResult = await this.pool.query(userQuery, [userId]);
-
-    if (userResult.rows.length > 0 && userResult.rows[0].role === 'admin') {
-      return { canEdit: true, reason: 'admin' };
-    }
-
-    // Check explicit permissions
-    const permQuery = `
-      SELECT * FROM document_edit_permissions
-      WHERE task_id = $1 AND user_id = $2
-        AND can_edit = TRUE AND revoked = FALSE
-        AND (expires_at IS NULL OR expires_at > NOW());
-    `;
-    const permResult = await this.pool.query(permQuery, [taskId, userId]);
-
-    if (permResult.rows.length > 0) {
-      return { canEdit: true, reason: 'granted_permission' };
+      const isOwner = ownerResult.rows[0].user_id === userId;
+      return {
+        canEdit: true,
+        reason: isOwner ? 'owner' : 'granted_permission'
+      };
     }
 
     return { canEdit: false, reason: 'no_permission' };
@@ -1061,23 +1060,19 @@ class DatabaseService {
   /**
    * Grant edit permission to a user
    */
-  async grantEditPermission(taskId, userId, grantedBy, expiresAt = null) {
+  async grantEditPermission(taskId, userId, grantedBy, expiresAt = null, grantReason = null) {
     const query = `
-      INSERT INTO document_edit_permissions (
-        task_id, user_id, granted_by, expires_at
-      )
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (task_id, user_id) DO UPDATE
-      SET
-        can_edit = TRUE,
-        revoked = FALSE,
-        granted_by = EXCLUDED.granted_by,
-        expires_at = EXCLUDED.expires_at,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *;
+      SELECT * FROM grant_task_permission(
+        $1, $2, $3,
+        true,  -- can_view
+        true,  -- can_edit
+        false, -- can_delete
+        $4,    -- expires_at
+        $5     -- grant_reason
+      );
     `;
 
-    const result = await this.pool.query(query, [taskId, userId, grantedBy, expiresAt]);
+    const result = await this.pool.query(query, [userId, taskId, grantedBy, expiresAt, grantReason]);
     return result.rows[0];
   }
 
@@ -1086,18 +1081,10 @@ class DatabaseService {
    */
   async revokeEditPermission(taskId, userId, revokedBy, reason) {
     const query = `
-      UPDATE document_edit_permissions
-      SET
-        revoked = TRUE,
-        revoked_by = $3,
-        revoked_at = CURRENT_TIMESTAMP,
-        revoke_reason = $4,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE task_id = $1 AND user_id = $2
-      RETURNING *;
+      SELECT * FROM revoke_task_permission($1, $2, $3, $4);
     `;
 
-    const result = await this.pool.query(query, [taskId, userId, revokedBy, reason]);
+    const result = await this.pool.query(query, [userId, taskId, revokedBy, reason]);
     return result.rows[0];
   }
 
@@ -1413,6 +1400,42 @@ class DatabaseService {
   }
 
   /**
+   * Auto-close orphaned edit sessions (Layer 3 cleanup)
+   * Closes sessions that have been inactive for more than timeout period
+   * This catches cases where browser crashed or client/backend handlers failed
+   */
+  async closeOrphanedEditSessions(timeoutMinutes = 15) {
+    const query = `
+      UPDATE document_edit_sessions
+      SET
+        ended_at = last_activity_at + INTERVAL '${timeoutMinutes} minutes',
+        outcome = 'timeout'
+      WHERE
+        ended_at IS NULL
+        AND (
+          last_activity_at IS NOT NULL
+          AND last_activity_at < NOW() - INTERVAL '${timeoutMinutes} minutes'
+        )
+        OR (
+          last_activity_at IS NULL
+          AND started_at < NOW() - INTERVAL '${timeoutMinutes} minutes'
+        )
+      RETURNING session_id, user_id, task_id, started_at, last_activity_at;
+    `;
+
+    const result = await this.pool.query(query);
+
+    if (result.rows.length > 0) {
+      console.log(`🧹 Auto-closed ${result.rows.length} orphaned session(s)`);
+      result.rows.forEach(session => {
+        console.log(`   - Session: ${session.session_id} (inactive since ${session.last_activity_at || session.started_at})`);
+      });
+    }
+
+    return result.rows;
+  }
+
+  /**
    * Get edit session history for a document
    */
   async getDocumentEditHistory(taskId) {
@@ -1558,6 +1581,181 @@ class DatabaseService {
 
     const result = await this.pool.query(query, [taskId]);
     return result.rows[0].next_version;
+  }
+
+  // =============================================
+  // FOLDER MANAGEMENT METHODS
+  // =============================================
+
+  /**
+   * Create a new folder
+   */
+  async createFolder(folderData) {
+    const { userId, name, description = null, color = '#c7ff00', parentFolderId = null } = folderData;
+
+    const query = `
+      INSERT INTO folders (user_id, name, description, color, parent_folder_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *;
+    `;
+
+    const result = await this.pool.query(query, [userId, name, description, color, parentFolderId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Get all folders for a user
+   */
+  async getUserFolders(userId, includeArchived = false) {
+    let query = `
+      SELECT
+        f.*,
+        COUNT(t.id) as task_count
+      FROM folders f
+      LEFT JOIN tasks t ON f.id = t.folder_id
+      WHERE f.user_id = $1
+    `;
+
+    if (!includeArchived) {
+      query += ` AND f.is_archived = false`;
+    }
+
+    query += `
+      GROUP BY f.id
+      ORDER BY f.created_at DESC;
+    `;
+
+    const result = await this.pool.query(query, [userId]);
+    return result.rows;
+  }
+
+  /**
+   * Get folder by ID
+   */
+  async getFolderById(folderId) {
+    const query = `
+      SELECT
+        f.*,
+        COUNT(t.id) as task_count
+      FROM folders f
+      LEFT JOIN tasks t ON f.id = t.folder_id
+      WHERE f.id = $1
+      GROUP BY f.id;
+    `;
+
+    const result = await this.pool.query(query, [folderId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Update folder
+   */
+  async updateFolder(folderId, updates) {
+    const { name, description, color, isArchived } = updates;
+
+    const query = `
+      UPDATE folders
+      SET
+        name = COALESCE($2, name),
+        description = COALESCE($3, description),
+        color = COALESCE($4, color),
+        is_archived = COALESCE($5, is_archived),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+    const result = await this.pool.query(query, [
+      folderId,
+      name,
+      description,
+      color,
+      isArchived
+    ]);
+
+    return result.rows[0];
+  }
+
+  /**
+   * Delete folder (tasks will have folder_id set to NULL)
+   */
+  async deleteFolder(folderId) {
+    const query = 'DELETE FROM folders WHERE id = $1 RETURNING *;';
+    const result = await this.pool.query(query, [folderId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Move task to folder
+   */
+  async moveTaskToFolder(taskId, folderId, userId) {
+    const query = `
+      UPDATE tasks
+      SET folder_id = $2
+      WHERE id = $1 AND user_id = $3
+      RETURNING *;
+    `;
+
+    const result = await this.pool.query(query, [taskId, folderId, userId]);
+    return result.rows[0];
+  }
+
+  /**
+   * Get tasks in a folder
+   */
+  async getFolderTasks(folderId, userId, limit = 50, offset = 0) {
+    const query = `
+      SELECT
+        t.*,
+        f.original_filename as filename,
+        f.mime_type,
+        f.file_size
+      FROM tasks t
+      LEFT JOIN files f ON t.file_id = f.id
+      WHERE t.folder_id = $1 AND t.user_id = $2
+      ORDER BY t.created_at DESC
+      LIMIT $3 OFFSET $4;
+    `;
+
+    const result = await this.pool.query(query, [folderId, userId, limit, offset]);
+    return result.rows;
+  }
+
+  /**
+   * Log folder action (HIPAA audit)
+   */
+  async logFolderAction(logData) {
+    const { folderId, userId, action, details, ipAddress, userAgent } = logData;
+
+    const query = `
+      SELECT log_folder_action($1, $2, $3, $4, $5, $6) as log_id;
+    `;
+
+    const result = await this.pool.query(query, [
+      folderId,
+      userId,
+      action,
+      details ? JSON.stringify(details) : null,
+      ipAddress,
+      userAgent
+    ]);
+
+    return result.rows[0].log_id;
+  }
+
+  /**
+   * Get folder audit logs
+   */
+  async getFolderAuditLogs(folderId, limit = 100, offset = 0) {
+    const query = `
+      SELECT * FROM folder_audit_log
+      WHERE folder_id = $1
+      ORDER BY performed_at DESC
+      LIMIT $2 OFFSET $3;
+    `;
+
+    const result = await this.pool.query(query, [folderId, limit, offset]);
+    return result.rows;
   }
 }
 

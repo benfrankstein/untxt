@@ -200,7 +200,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 document.getElementById('signupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
 
+  const firstName = document.getElementById('signupFirstName').value.trim();
+  const lastName = document.getElementById('signupLastName').value.trim();
   const email = document.getElementById('signupEmail').value.trim();
+  const phoneNumber = document.getElementById('signupPhoneNumber').value.trim();
   const username = document.getElementById('signupUsername').value.trim();
   const password = document.getElementById('signupPassword').value;
   const button = document.getElementById('signupButton');
@@ -208,6 +211,18 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
   // Clear previous errors
   clearAllErrors('signupForm');
   hideAlert();
+
+  // Validate first name
+  if (!firstName) {
+    showFieldError('signupFirstName', 'First name is required');
+    return;
+  }
+
+  // Validate last name
+  if (!lastName) {
+    showFieldError('signupLastName', 'Last name is required');
+    return;
+  }
 
   // Validate email
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -251,7 +266,10 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
       },
       credentials: 'include', // Important for session cookies
       body: JSON.stringify({
+        firstName,
+        lastName,
         email,
+        phoneNumber: phoneNumber || null,
         username,
         password
       })
@@ -270,7 +288,11 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
       showAlert(data.error || 'Signup failed', 'error');
 
       // Show specific field errors if possible
-      if (data.error.includes('email')) {
+      if (data.error.includes('first name') || data.error.includes('First name')) {
+        showFieldError('signupFirstName', data.error);
+      } else if (data.error.includes('last name') || data.error.includes('Last name')) {
+        showFieldError('signupLastName', data.error);
+      } else if (data.error.includes('email')) {
         showFieldError('signupEmail', data.error);
       } else if (data.error.includes('username')) {
         showFieldError('signupUsername', data.error);

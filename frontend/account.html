@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account - OCR Platform</title>
+  <link rel="stylesheet" href="account.css">
+</head>
+<body>
+  <div class="account-container">
+    <!-- Header -->
+    <div class="account-header">
+      <div class="header-content">
+        <img src="logo.png" alt="untxt Logo" class="logo">
+        <div class="header-actions">
+          <button class="btn-back" id="backToDashboard">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            <span>Back to Dashboard</span>
+          </button>
+          <button class="btn-logout" id="logoutBtn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Loading profile...</p>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-container hidden" id="errorContainer">
+      <div class="error-icon">⚠</div>
+      <h2>Failed to load profile</h2>
+      <p id="errorMessage">An error occurred while loading your profile.</p>
+      <button class="btn-retry" id="retryBtn">Try Again</button>
+    </div>
+
+    <!-- Account Content -->
+    <div class="account-content hidden" id="accountContent">
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="profile-avatar">
+            <span id="userInitials">U</span>
+          </div>
+          <div class="profile-title">
+            <h1 id="fullName">User Name</h1>
+            <p class="role-badge" id="userRole">User</p>
+          </div>
+        </div>
+
+        <div class="profile-info">
+          <h2>Account Information</h2>
+
+          <div class="info-grid">
+            <div class="info-item">
+              <label class="info-label">First Name</label>
+              <div class="info-value" id="firstName">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Last Name</label>
+              <div class="info-value" id="lastName">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Username</label>
+              <div class="info-value" id="username">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Email</label>
+              <div class="info-value" id="email">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Phone Number</label>
+              <div class="info-value" id="phoneNumber">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Account Created</label>
+              <div class="info-value" id="createdAt">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">Last Login</label>
+              <div class="info-value" id="lastLogin">-</div>
+            </div>
+
+            <div class="info-item">
+              <label class="info-label">User ID</label>
+              <div class="info-value mono" id="userId">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="account.js"></script>
+</body>
+</html>
