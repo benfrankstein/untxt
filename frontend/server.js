@@ -33,7 +33,13 @@ const server = http.createServer((req, res) => {
         res.end('500 Internal Server Error');
       }
     } else {
-      res.writeHead(200, { 'Content-Type': contentType });
+      const headers = {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      };
+      res.writeHead(200, headers);
       res.end(content);
     }
   });
