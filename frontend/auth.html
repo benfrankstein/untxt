@@ -5,6 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login / Sign Up - OCR Platform</title>
   <style>
+    /* ============================================
+       FONT FACES - N27 Webfont
+       ============================================ */
+    @font-face {
+      font-family: 'n27regular';
+      src: url('fonts/n27-regular-webfont.woff2') format('woff2'),
+           url('fonts/n27-regular-webfont.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'n27medium';
+      src: url('fonts/n27-medium-webfont.woff2') format('woff2'),
+           url('fonts/n27-medium-webfont.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'n27bold';
+      src: url('fonts/n27-bold-webfont.woff2') format('woff2'),
+           url('fonts/n27-bold-webfont.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    /* ============================================
+       BASE STYLES
+       ============================================ */
     * {
       margin: 0;
       padding: 0;
@@ -12,58 +42,66 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      font-family: 'n27regular', system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: #f3f0e7;
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
       padding: 20px;
+      color: #1a1410;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     .auth-container {
-      background: #2a2a2a;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 20px rgba(199, 255, 0, 0.1);
+      background: #ffffff;
+      border-radius: 0.75rem;
+      box-shadow: 0 10px 24px rgba(26, 20, 16, 0.12);
       max-width: 450px;
       width: 100%;
       overflow: hidden;
-      border: 1px solid #3a3a3a;
+      border: 1px solid rgba(174, 170, 151, 0.4);
     }
 
+    /* ============================================
+       TABS
+       ============================================ */
     .auth-tabs {
       display: flex;
-      border-bottom: 1px solid #3a3a3a;
+      border-bottom: 1px solid rgba(174, 170, 151, 0.3);
     }
 
     .auth-tab {
       flex: 1;
       padding: 20px;
-      background: #1f1f1f;
+      background: #f3f0e7;
       border: none;
       cursor: pointer;
+      font-family: 'n27medium', sans-serif;
       font-size: 16px;
-      font-weight: 600;
-      color: #888;
-      transition: all 0.3s;
+      color: #aeaa97;
+      transition: all 0.2s ease-out;
     }
 
     .auth-tab.active {
-      background: #2a2a2a;
-      color: #c7ff00;
-      border-bottom: 3px solid #c7ff00;
-      box-shadow: 0 0 10px rgba(199, 255, 0, 0.3);
+      background: #ffffff;
+      color: #e67e22;
+      border-bottom: 3px solid #e67e22;
     }
 
     .auth-tab:hover {
-      background: #252525;
-      color: #c7ff00;
+      background: rgba(230, 126, 34, 0.08);
+      color: #e67e22;
     }
 
     .auth-tab.active:hover {
-      background: #2a2a2a;
+      background: #ffffff;
     }
 
+    /* ============================================
+       FORM CONTAINER
+       ============================================ */
     .auth-form-container {
       padding: 40px;
     }
@@ -82,6 +120,9 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+    /* ============================================
+       FORM ELEMENTS
+       ============================================ */
     .form-group {
       margin-bottom: 24px;
     }
@@ -89,26 +130,31 @@
     .form-label {
       display: block;
       margin-bottom: 8px;
-      font-weight: 600;
-      color: #c7ff00;
+      font-family: 'n27medium', sans-serif;
+      color: #1a1410;
       font-size: 14px;
     }
 
     .form-input {
       width: 100%;
       padding: 12px 16px;
-      border: 2px solid #3a3a3a;
-      border-radius: 8px;
+      border: 2px solid rgba(174, 170, 151, 0.4);
+      border-radius: 0.5rem;
+      font-family: 'n27regular', sans-serif;
       font-size: 16px;
-      transition: all 0.3s;
-      background: #1f1f1f;
-      color: #e0e0e0;
+      transition: all 0.2s ease-out;
+      background: #ffffff;
+      color: #1a1410;
+    }
+
+    .form-input::placeholder {
+      color: #aeaa97;
     }
 
     .form-input:focus {
       outline: none;
-      border-color: #c7ff00;
-      box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.2), 0 0 10px rgba(199, 255, 0, 0.1);
+      border-color: #e67e22;
+      box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.15);
     }
 
     .form-input.error {
@@ -116,7 +162,8 @@
     }
 
     .form-error {
-      color: #ff6666;
+      color: #ff4444;
+      font-family: 'n27regular', sans-serif;
       font-size: 13px;
       margin-top: 6px;
       display: none;
@@ -126,10 +173,13 @@
       display: block;
     }
 
+    /* ============================================
+       PASSWORD REQUIREMENTS
+       ============================================ */
     .password-requirements {
-      background: #1f1f1f;
-      border: 1px solid #3a3a3a;
-      border-radius: 8px;
+      background: #f3f0e7;
+      border: 1px solid rgba(174, 170, 151, 0.4);
+      border-radius: 0.5rem;
       padding: 12px;
       margin-top: 8px;
       font-size: 13px;
@@ -139,11 +189,12 @@
       display: flex;
       align-items: center;
       margin: 6px 0;
-      color: #666;
+      color: #aeaa97;
+      font-family: 'n27regular', sans-serif;
     }
 
     .requirement.met {
-      color: #c7ff00;
+      color: #e67e22;
     }
 
     .requirement::before {
@@ -156,35 +207,51 @@
       content: '✓';
     }
 
+    /* ============================================
+       BUTTONS (Primary style from styleguide)
+       ============================================ */
     .form-button {
       width: 100%;
-      padding: 14px;
-      background: #c7ff00;
-      color: #1a1a1a;
-      border: none;
-      border-radius: 8px;
+      min-height: 3rem;
+      padding: 0 1.5rem;
+      background-color: #e67e22;
+      color: #ffffff;
+      border: 2px solid #e67e22;
+      border-radius: 0.5rem;
+      font-family: 'n27medium', sans-serif;
       font-size: 16px;
-      font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: background-color 200ms ease-out, border-color 200ms ease-out;
     }
 
     .form-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(199, 255, 0, 0.4), 0 0 20px rgba(199, 255, 0, 0.3);
-      background: #d4ff33;
+      background-color: #d35400;
+      border-color: #d35400;
+    }
+
+    .form-button:active {
+      background-color: #c44d0f;
+      border-color: #c44d0f;
+    }
+
+    .form-button:focus-visible {
+      outline: 2px solid #e67e22;
+      outline-offset: 3px;
     }
 
     .form-button:disabled {
-      opacity: 0.6;
+      opacity: 0.35;
       cursor: not-allowed;
-      transform: none;
     }
 
+    /* ============================================
+       ALERTS
+       ============================================ */
     .alert {
       padding: 12px 16px;
-      border-radius: 8px;
+      border-radius: 0.5rem;
       margin-bottom: 20px;
+      font-family: 'n27regular', sans-serif;
       font-size: 14px;
       display: none;
     }
@@ -200,17 +267,20 @@
     }
 
     .alert.success {
-      background: rgba(199, 255, 0, 0.15);
-      color: #c7ff00;
-      border: 1px solid #c7ff00;
+      background: rgba(230, 126, 34, 0.15);
+      color: #d35400;
+      border: 1px solid #e67e22;
     }
 
     .alert.error {
       background: rgba(255, 68, 68, 0.15);
-      color: #ff6666;
+      color: #cc0000;
       border: 1px solid #ff4444;
     }
 
+    /* ============================================
+       PASSWORD TOGGLE
+       ============================================ */
     .password-toggle {
       position: absolute;
       right: 16px;
@@ -218,7 +288,7 @@
       transform: translateY(-50%);
       cursor: pointer;
       user-select: none;
-      transition: all 0.3s;
+      transition: all 0.2s ease-out;
       width: 24px;
       height: 24px;
     }
@@ -226,26 +296,29 @@
     .password-toggle svg {
       width: 100%;
       height: 100%;
-      stroke: #c7ff00;
+      stroke: #e67e22;
       fill: none;
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
-      transition: all 0.3s;
+      transition: all 0.2s ease-out;
     }
 
     .password-toggle:hover svg {
-      stroke: #d4ff33;
+      stroke: #d35400;
     }
 
     .input-wrapper {
       position: relative;
     }
 
+    /* ============================================
+       LOGO
+       ============================================ */
     .auth-logo {
       text-align: center;
       padding: 20px 40px 15px;
-      background: #2a2a2a;
+      background: #ffffff;
     }
 
     .auth-logo img {

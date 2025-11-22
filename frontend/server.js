@@ -15,7 +15,9 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
-  let filePath = req.url === '/' ? '/index.html' : req.url;
+  // Strip query parameters from URL (e.g., ?session_id=...)
+  const urlWithoutQuery = req.url.split('?')[0];
+  let filePath = urlWithoutQuery === '/' ? '/index.html' : urlWithoutQuery;
   filePath = path.join(__dirname, filePath);
 
   const ext = path.extname(filePath);

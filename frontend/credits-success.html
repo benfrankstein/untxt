@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Successful - UNTXT</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .success-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .success-card {
+      background: white;
+      border-radius: 16px;
+      padding: 3rem 2rem;
+      max-width: 500px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      background: #10b981;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: scaleIn 0.5s ease-out;
+    }
+
+    .success-icon svg {
+      width: 48px;
+      height: 48px;
+      stroke: white;
+      stroke-width: 3;
+    }
+
+    @keyframes scaleIn {
+      from {
+        transform: scale(0);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .success-title {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #1f2937;
+      margin-bottom: 1rem;
+    }
+
+    .success-message {
+      font-size: 1.1rem;
+      color: #6b7280;
+      margin-bottom: 2rem;
+      line-height: 1.6;
+    }
+
+    .credits-added {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #f3f4f6;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #10b981;
+    }
+
+    .btn-return {
+      display: inline-block;
+      padding: 0.875rem 2rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      border: none;
+      font-size: 1rem;
+    }
+
+    .btn-return:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f4f6;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-message {
+      color: #6b7280;
+      font-size: 1rem;
+      margin-top: 1rem;
+    }
+
+    .error-message {
+      color: #ef4444;
+      font-size: 1rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="success-container">
+    <div class="success-card">
+      <div id="loadingState">
+        <div class="loading-spinner"></div>
+        <h1 class="success-title">Processing Payment...</h1>
+        <p class="status-message">Please wait while we verify your payment and add credits to your account.</p>
+      </div>
+
+      <div id="successState" style="display: none;">
+        <div class="success-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h1 class="success-title">Payment Successful!</h1>
+        <p class="success-message">Your payment has been processed and credits have been added to your account.</p>
+        <div class="credits-added">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 6v6l4 2"></path>
+          </svg>
+          <span id="creditsAmount">+0 credits</span>
+        </div>
+        <button class="btn-return" onclick="returnToApp()">Return to App</button>
+      </div>
+
+      <div id="errorState" style="display: none;">
+        <div class="success-icon" style="background: #ef4444;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </div>
+        <h1 class="success-title">Payment Processing Issue</h1>
+        <p class="error-message" id="errorMessage">We're having trouble processing your payment. Please check your account or contact support.</p>
+        <button class="btn-return" onclick="returnToApp()">Return to App</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8080/api';
+
+    async function verifyAndApplyPayment() {
+      // Get session_id from URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session_id');
+
+      if (!sessionId) {
+        showError('No session ID found');
+        return;
+      }
+
+      try {
+        // Get auth token
+        const token = localStorage.getItem('token');
+        if (!token) {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        // Call backend to verify and apply payment
+        const response = await fetch(`${API_BASE}/credits/verify-payment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ sessionId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showSuccess(data.data.creditsAdded || data.data.credits);
+
+          // Auto-redirect after 3 seconds
+          setTimeout(() => {
+            returnToApp();
+          }, 3000);
+        } else {
+          showError(data.message || 'Payment verification failed');
+        }
+      } catch (error) {
+        console.error('Error verifying payment:', error);
+        showError('Failed to verify payment. Please contact support.');
+      }
+    }
+
+    function showSuccess(credits) {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('successState').style.display = 'block';
+      document.getElementById('creditsAmount').textContent = `+${credits} credits`;
+    }
+
+    function showError(message) {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'block';
+      document.getElementById('errorMessage').textContent = message;
+    }
+
+    function returnToApp() {
+      window.location.href = '/';
+    }
+
+    // Start verification when page loads
+    verifyAndApplyPayment();
+  </script>
+</body>
+</html>

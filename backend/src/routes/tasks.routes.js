@@ -8,6 +8,7 @@ const dbService = require('../services/db.service');
 const redisService = require('../services/redis.service');
 const websocketService = require('../services/websocket.service');
 const pdfService = require('../services/pdf.service');
+const creditsService = require('../services/credits.service');
 const config = require('../config');
 
 // Configure multer for file uploads
@@ -45,6 +46,20 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'User ID is required',
+      });
+    }
+
+    // CREDITS CHECK: Validate user has sufficient credits (1 credit minimum)
+    const requiredCredits = 1; // Start with 1 credit estimate
+    try {
+      await creditsService.validateSufficientCredits(userId, requiredCredits);
+    } catch (creditError) {
+      console.log(`❌ Insufficient credits for user ${userId}`);
+      return res.status(402).json({
+        success: false,
+        error: 'Insufficient credits',
+        message: creditError.message,
+        action: 'purchase_credits'
       });
     }
 
@@ -94,6 +109,28 @@ router.post('/', upload.single('file'), async (req, res) => {
       priority: parseInt(req.body.priority) || 5,
     });
 
+    // CREDITS DEDUCTION: Deduct credits after task is created
+    let creditDeduction;
+    try {
+      creditDeduction = await creditsService.deductCredits(
+        userId,
+        requiredCredits,
+        taskId,
+        `Page upload: ${req.file.originalname}`,
+        {
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          fileName: req.file.originalname,
+          fileSize: req.file.size
+        }
+      );
+      console.log(`✓ Deducted ${requiredCredits} credit(s) from user ${userId}. New balance: ${creditDeduction.newBalance}`);
+    } catch (deductError) {
+      console.error(`❌ Failed to deduct credits for task ${taskId}:`, deductError);
+      // Task was created but credits weren't deducted
+      // This shouldn't happen if validation passed, but log for manual reconciliation
+    }
+
     // Enqueue task to Redis
     console.log(`Enqueuing task to Redis: ${taskId}`);
     await redisService.enqueueTask({
@@ -133,6 +170,9 @@ router.post('/', upload.single('file'), async (req, res) => {
         status: taskRecord.status,
         queuePosition: queueStats.queued,
         createdAt: taskRecord.created_at,
+        // Credits info
+        creditsDeducted: requiredCredits,
+        creditsRemaining: creditDeduction?.newBalance || null,
       },
     });
 

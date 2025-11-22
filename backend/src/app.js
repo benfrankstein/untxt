@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/admin.routes');
 const versionsRoutes = require('./routes/versions.routes');
 const sessionsRoutes = require('./routes/sessions.routes');
 const foldersRoutes = require('./routes/folders.routes');
+const creditsRoutes = require('./routes/credits.routes');
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use('/api/folders', foldersRoutes); // Project folder organization
 app.use('/api/admin', adminRoutes); // Access control & revocation endpoints
 app.use('/api/versions', versionsRoutes); // Document versioning & editing
 app.use('/api/sessions', sessionsRoutes); // Google Docs flow - edit sessions
+app.use('/api/credits', creditsRoutes); // Credits system & payment processing
 
 // 404 handler
 app.use((req, res) => {

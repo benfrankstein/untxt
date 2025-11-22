@@ -17,6 +17,20 @@
       <!-- Save Indicator -->
       <div id="saveIndicator" class="save-indicator"></div>
       <span id="userInfo" class="user-email">Loading...</span>
+
+      <!-- Credits Widget -->
+      <div class="credits-widget" id="creditsWidget">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+        <div class="credits-info">
+          <span class="credits-label">Credits</span>
+          <span class="credits-balance" id="creditsBalance">--</span>
+        </div>
+        <button class="btn-buy-credits" id="buyCreditsBtn" title="Buy more credits">+</button>
+      </div>
+
       <button class="btn-account" id="accountBtn">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -56,6 +70,40 @@
         </div>
 
         <div class="upload-status" id="uploadStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Purchase Credits Modal -->
+  <div class="modal-overlay" id="purchaseCreditsModal">
+    <div class="modal-content modal-credits">
+      <div class="modal-header">
+        <h2>Buy Credits</h2>
+        <button class="modal-close" id="closePurchaseModal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Choose a credit package to continue processing documents</p>
+
+        <div class="credits-packages" id="creditsPackages">
+          <!-- Packages will be loaded dynamically -->
+          <div class="package-loading">Loading packages...</div>
+        </div>
+
+        <div class="purchase-footer">
+          <p class="purchase-note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            1 credit = 1 page processed. Credits never expire.
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -410,6 +458,8 @@
     <span class="ws-tooltip">Live updates</span>
   </div>
 
+  <script src="https://js.stripe.com/v3/"></script>
   <script src="app.js"></script>
+  <script src="credits.js"></script>
 </body>
 </html>
