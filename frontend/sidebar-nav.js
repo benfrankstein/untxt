@@ -219,6 +219,15 @@ const SidebarNav = {
         this.closeAllProjectMenus();
       }
     });
+
+    // Project item clicks - navigate to documents page
+    document.querySelectorAll('.project-item:not(.project-new)').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const projectId = item.dataset.projectId;
+        this.handleProjectClick(projectId);
+      });
+    });
   },
 
   /**
@@ -321,9 +330,23 @@ const SidebarNav = {
         if (dropdownAvatar) {
           dropdownAvatar.textContent = initial;
         }
+      } else {
+        console.error('Failed to load user data: HTTP', response.status);
+        // Set fallback values
+        const userName = document.getElementById('sidebarUserName');
+        if (userName) userName.textContent = 'User';
+
+        const dropdownUserName = document.getElementById('dropdownUserName');
+        if (dropdownUserName) dropdownUserName.textContent = 'User';
       }
     } catch (error) {
       console.error('Failed to load user data:', error);
+      // Set fallback values
+      const userName = document.getElementById('sidebarUserName');
+      if (userName) userName.textContent = 'User';
+
+      const dropdownUserName = document.getElementById('dropdownUserName');
+      if (dropdownUserName) dropdownUserName.textContent = 'User';
     }
   },
 
@@ -762,8 +785,39 @@ const SidebarNav = {
         alert('Failed to delete project. Please try again.');
       }
     }
+  },
+
+  /**
+   * Handle project click - navigate to documents page and show project
+   */
+  handleProjectClick(projectId) {
+    console.log('📁 Project clicked:', projectId);
+
+    // Check if we're on index.html or home page
+    const isOnIndexPage = window.location.pathname.includes('index.html') || window.location.pathname === '/';
+
+    if (isOnIndexPage && typeof selectFolder === 'function' && typeof showViewer === 'function') {
+      // Already on index page with app.js loaded - select folder directly
+      console.log('📄 Already on index page, selecting folder directly');
+
+      selectFolder(projectId);
+
+      // Show first document in viewer if available
+      setTimeout(() => {
+        const projectTasks = tasks.filter(t => t.folder_id === projectId);
+        if (projectTasks.length > 0) {
+          console.log('📄 Opening first document in viewer');
+          showViewer(projectTasks[0]);
+        }
+      }, 100);
+    } else {
+      // Navigate to index.html with project selection
+      localStorage.setItem('selectedProject', projectId);
+      window.location.href = 'index.html';
+    }
   }
 };
+
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {

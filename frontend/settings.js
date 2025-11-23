@@ -62,7 +62,7 @@ function initializeSettings() {
   // Load data
   loadAccountData();
   loadCreditsData();
-  loadCreditPackages();
+  initCreditsPurchase();
 }
 
 /**
@@ -149,10 +149,13 @@ async function loadCreditsData() {
 }
 
 /**
- * Load credit packages
+ * Initialize credits purchase form
  */
-async function loadCreditPackages() {
+let creditPackages = [];
+
+async function initCreditsPurchase() {
   try {
+    // Load packages from API
     const response = await fetch(`${API_BASE}/credits/packages`, {
       credentials: 'include'
     });
@@ -160,67 +163,136 @@ async function loadCreditPackages() {
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.data.packages) {
-        renderCreditPackages(data.data.packages);
+        creditPackages = data.data.packages;
+        setupCreditsPurchaseForm();
       }
-    } else {
-      console.error('Failed to load credit packages');
     }
   } catch (error) {
     console.error('Error loading credit packages:', error);
   }
 }
 
-/**
- * Render credit packages
- */
-function renderCreditPackages(packages) {
-  const container = document.getElementById('settingsCreditsPackages');
-  if (!container) return;
+function setupCreditsPurchaseForm() {
+  const radioButtons = document.querySelectorAll('input[name="creditAmount"]');
+  const creditsDisplay = document.getElementById('creditsAmountDisplay');
+  const purchaseBtn = document.getElementById('purchaseCreditsBtn');
+  const customInput = document.getElementById('customAmountInput');
 
-  if (!packages || packages.length === 0) {
-    container.innerHTML = '<div class="package-loading">No packages available</div>';
+  // Update credits display when selection changes
+  radioButtons.forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateCreditsDisplay();
+      // Focus custom input when "Other" is selected
+      if (radio.value === 'other' && customInput) {
+        setTimeout(() => customInput.focus(), 100);
+      }
+    });
+  });
+
+  // Update credits display when custom amount changes
+  if (customInput) {
+    customInput.addEventListener('input', () => {
+      const otherRadio = document.querySelector('input[name="creditAmount"][value="other"]');
+      if (otherRadio) {
+        otherRadio.checked = true;
+      }
+      updateCreditsDisplay();
+    });
+
+    // Select "Other" radio when clicking on the custom input
+    customInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const otherRadio = document.querySelector('input[name="creditAmount"][value="other"]');
+      if (otherRadio) {
+        otherRadio.checked = true;
+        updateCreditsDisplay();
+      }
+    });
+  }
+
+  // Handle purchase button click
+  if (purchaseBtn) {
+    purchaseBtn.addEventListener('click', () => {
+      handlePurchase();
+    });
+  }
+
+  // Set initial display
+  updateCreditsDisplay();
+}
+
+function updateCreditsDisplay() {
+  const selectedRadio = document.querySelector('input[name="creditAmount"]:checked');
+  const creditsDisplay = document.getElementById('creditsAmountDisplay');
+  const customInput = document.getElementById('customAmountInput');
+
+  if (!selectedRadio || !creditsDisplay) return;
+
+  if (selectedRadio.value === 'other') {
+    // Custom amount - calculate based on $0.12 per credit
+    const customAmount = parseFloat(customInput.value) || 0;
+    const credits = Math.floor(customAmount / 0.12);
+    creditsDisplay.innerHTML = `<span class="credits-count">${credits}</span><div>credits</div>`;
+  } else {
+    // Pre-defined package
+    const packageIndex = parseInt(selectedRadio.value) - 1;
+    const package = creditPackages[packageIndex];
+
+    if (package) {
+      creditsDisplay.innerHTML = `<span class="credits-count">${package.credits}</span><div>credits</div>`;
+    }
+  }
+}
+
+async function handlePurchase() {
+  const selectedRadio = document.querySelector('input[name="creditAmount"]:checked');
+  const purchaseBtn = document.getElementById('purchaseCreditsBtn');
+  const customInput = document.getElementById('customAmountInput');
+
+  if (!selectedRadio) {
+    showNotification('Please select an amount', 'error');
     return;
   }
 
-  container.innerHTML = packages.map((pkg, index) => {
-    const isPopular = index === 2; // Pro Pack is popular
-    const savingsText = pkg.savings_percentage > 0
-      ? `Save ${pkg.savings_percentage}%`
-      : '';
+  let packageId, customAmount;
 
-    return `
-      <div class="credit-package ${isPopular ? 'popular' : ''}" data-package-id="${pkg.id}">
-        <div class="package-name">${pkg.name}</div>
-        <div class="package-credits">${pkg.credits}</div>
-        <div class="package-credits-label">credits</div>
-        <div class="package-price">$${parseFloat(pkg.price_usd).toFixed(2)}</div>
-        ${savingsText ? `<div class="package-savings">${savingsText}</div>` : ''}
-        <div class="package-description">${pkg.description || ''}</div>
-        <button class="btn-select-package" onclick="purchaseCredits('${pkg.id}')">
-          Select Package
-        </button>
-      </div>
-    `;
-  }).join('');
-}
+  if (selectedRadio.value === 'other') {
+    // Custom amount
+    customAmount = parseFloat(customInput.value);
+    if (!customAmount || customAmount < 5) {
+      showNotification('Please enter an amount of at least $5', 'error');
+      return;
+    }
+    // For custom amounts, we'll use the first package ID but pass custom amount
+    packageId = creditPackages[0]?.id;
+  } else {
+    // Pre-defined package
+    const packageIndex = parseInt(selectedRadio.value) - 1;
+    const package = creditPackages[packageIndex];
 
-/**
- * Purchase credits
- */
-async function purchaseCredits(packageId) {
-  const button = event.target;
-  const originalText = button.textContent;
-  button.textContent = 'Processing...';
-  button.classList.add('loading');
+    if (!package) {
+      showNotification('Package not found', 'error');
+      return;
+    }
+    packageId = package.id;
+  }
+
+  const originalText = purchaseBtn.textContent;
+  purchaseBtn.textContent = 'Processing...';
+  purchaseBtn.disabled = true;
 
   try {
+    const requestBody = customAmount
+      ? { packageId, customAmount }
+      : { packageId };
+
     const response = await fetch(`${API_BASE}/credits/purchase`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       credentials: 'include',
-      body: JSON.stringify({ packageId })
+      body: JSON.stringify(requestBody)
     });
 
     const data = await response.json();
@@ -232,16 +304,16 @@ async function purchaseCredits(packageId) {
       // Simulation mode
       showNotification('Payment simulated. Credits added!', 'success');
       await loadCreditsData();
-      button.textContent = originalText;
-      button.classList.remove('loading');
+      purchaseBtn.textContent = originalText;
+      purchaseBtn.disabled = false;
     } else {
       throw new Error(data.message || 'Failed to create checkout session');
     }
   } catch (error) {
     console.error('Error purchasing credits:', error);
     showNotification(`Failed to purchase credits: ${error.message}`, 'error');
-    button.textContent = originalText;
-    button.classList.remove('loading');
+    purchaseBtn.textContent = originalText;
+    purchaseBtn.disabled = false;
   }
 }
 

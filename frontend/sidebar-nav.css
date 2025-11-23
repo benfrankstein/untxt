@@ -180,7 +180,6 @@
 }
 
 .project-item.project-new {
-  color: var(--color-primary);
   font-weight: 500;
 }
 
@@ -195,6 +194,10 @@
 
 .project-item.project-new .project-icon {
   color: var(--color-primary);
+}
+
+.project-item.project-new .project-name {
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .project-item.active .project-icon {

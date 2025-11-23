@@ -56,8 +56,43 @@ document.addEventListener('DOMContentLoaded', async () => {
   initEmptyStateUpload();
   initWebSocket();
   initFolders();
-  loadFolders();
-  loadTasks();
+  await loadFolders();
+  await loadTasks();
+
+  // Check if a project was selected from the sidebar
+  const selectedProject = localStorage.getItem('selectedProject');
+  if (selectedProject) {
+    // Clear the flag
+    localStorage.removeItem('selectedProject');
+
+    console.log('📁 Auto-selecting project from sidebar:', selectedProject);
+
+    // Wait a bit for tasks to load, then show first document in viewer
+    setTimeout(() => {
+      // Check if this project/folder exists
+      const folderExists = folders.some(f => f.id === selectedProject);
+
+      let projectTasks;
+      if (folderExists) {
+        // Select the specific folder
+        selectFolder(selectedProject);
+        projectTasks = tasks.filter(t => t.folder_id === selectedProject);
+      } else {
+        // Folder doesn't exist, show all documents instead
+        console.log('⚠️ Folder not found, showing all documents');
+        selectFolder('all');
+        projectTasks = tasks;
+      }
+
+      // Show first document in viewer if available
+      if (projectTasks.length > 0) {
+        console.log('📄 Auto-opening first document in viewer');
+        showViewer(projectTasks[0]);
+      } else {
+        console.log('📭 No documents available in this project');
+      }
+    }, 500);
+  }
 
   // Upload button - opens modal
   const uploadBtn = document.getElementById('uploadBtn');
@@ -107,6 +142,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('copyTextHeaderBtn')?.addEventListener('click', copyExtractedTextHeader);
   document.getElementById('downloadResultBtn')?.addEventListener('click', () => downloadResult(currentTask.id));
   document.getElementById('downloadOriginalBtn')?.addEventListener('click', () => downloadOriginal(currentTask.id));
+
+  // Tab switching
+  initTabs();
   document.getElementById('deleteTaskBtn')?.addEventListener('click', () => deleteTaskFromViewer(currentTask.id));
   document.getElementById('retryBtn')?.addEventListener('click', retryTask);
   document.getElementById('backToListBtn')?.addEventListener('click', showDashboard);
@@ -400,6 +438,200 @@ function updateProcessingStatus(status) {
 }
 
 // ==========================================
+// TAB FUNCTIONALITY
+// ==========================================
+
+let currentTab = 'upload'; // 'upload', 'ocr', 'download'
+
+function initTabs() {
+  const tabButtons = document.querySelectorAll('.project-tab');
+
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const tabName = button.getAttribute('data-tab');
+      switchTab(tabName);
+    });
+  });
+
+  // Initialize with Upload tab active
+  switchTab('upload');
+}
+
+function switchTab(tabName) {
+  currentTab = tabName;
+  console.log('📑 Switching to tab:', tabName);
+
+  // Update tab button states
+  document.querySelectorAll('.project-tab').forEach(btn => {
+    if (btn.getAttribute('data-tab') === tabName) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Update tab content visibility
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.remove('active');
+  });
+
+  const activeContent = document.getElementById(`${tabName}TabContent`);
+  if (activeContent) {
+    activeContent.classList.add('active');
+  }
+
+  // Render appropriate content for each tab
+  if (tabName === 'upload') {
+    renderUploadTab();
+  } else if (tabName === 'download') {
+    renderDownloadTab();
+  }
+}
+
+function renderUploadTab() {
+  const grid = document.getElementById('documentGridUpload');
+
+  // Mock file data
+  const mockFiles = [
+    { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Ready' },
+    { name: 'Invoice_March.pdf', size: '156 KB', pages: 1, date: 'Jan 14, 2025', status: 'Processing', progress: 67, eta: '30 sec' },
+    { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Ready' },
+    { name: 'Contract_Final.pdf', size: '1.2 MB', pages: 15, date: 'Jan 10, 2025', status: 'Completed' },
+    { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Ready' }
+  ];
+
+  grid.innerHTML = `
+    <div class="upload-zone">
+      <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+      <label for="fileInput" class="upload-zone-label">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Drop files here or click to browse</span>
+      </label>
+    </div>
+
+    <div class="files-list-container">
+      <table class="files-table">
+        <thead>
+          <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" id="selectAllFiles" class="file-checkbox">
+            </th>
+            <th class="sortable">Name</th>
+            <th class="sortable">Size</th>
+            <th class="sortable"># of Pages</th>
+            <th class="sortable">Date</th>
+            <th class="sortable">Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${mockFiles.map(file => {
+            const isCompleted = file.status === 'Completed';
+            const isProcessing = file.status === 'Processing';
+            const buttonDisabled = isCompleted || isProcessing;
+            const buttonClass = buttonDisabled ? 'btn-ocr-disabled' : 'btn-ocr';
+
+            // Render status cell differently for processing files
+            let statusCell;
+            if (isProcessing) {
+              statusCell = `
+                <div class="progress-info">
+                  <div class="debug-line" style="background: red; height: 1px;"></div>
+                  <div class="progress-percentage">${file.progress}%</div>
+                  <div class="debug-line" style="background: blue; height: 1px;"></div>
+                  <div class="progress-bar">
+                    <div class="progress-bar-fill" style="width: ${file.progress}%"></div>
+                  </div>
+                  <div class="debug-line" style="background: green; height: 1px;"></div>
+                  <div class="progress-eta">${file.eta} remaining</div>
+                  <div class="debug-line" style="background: yellow; height: 1px;"></div>
+                </div>
+              `;
+            } else {
+              statusCell = `<span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>`;
+            }
+
+            return `
+              <tr class="file-row">
+                <td class="checkbox-col">
+                  <input type="checkbox" class="file-checkbox" data-file-name="${file.name}">
+                </td>
+                <td class="file-name">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                  ${file.name}
+                </td>
+                <td class="file-size">${file.size}</td>
+                <td class="file-pages">${file.pages}</td>
+                <td class="file-date">${file.date}</td>
+                <td class="file-status">
+                  ${statusCell}
+                </td>
+                <td class="file-action">
+                  <button class="${buttonClass}" ${buttonDisabled ? 'disabled' : ''}>OCR</button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Setup "Select All" checkbox functionality
+  const selectAllCheckbox = document.getElementById('selectAllFiles');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+      const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles)');
+      fileCheckboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
+    });
+  }
+}
+
+function renderDownloadTab() {
+  const grid = document.getElementById('documentGridDownload');
+
+  // Filter completed tasks
+  let completedTasks = tasks.filter(task => task.status === 'completed');
+
+  if (currentFolderId !== 'all') {
+    completedTasks = completedTasks.filter(task => task.folder_id === currentFolderId);
+  }
+
+  if (completedTasks.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <p>No completed documents yet</p>
+        <small>Completed documents will appear here</small>
+      </div>
+    `;
+  } else {
+    grid.innerHTML = completedTasks.map(task => createDocumentCard(task)).join('');
+
+    // Add click handlers
+    completedTasks.forEach(task => {
+      const card = document.querySelector(`#documentGridDownload [data-task-id="${task.id}"]`);
+      if (card) {
+        card.addEventListener('click', () => showViewer(task));
+      }
+    });
+  }
+}
+
+// ==========================================
 // UPLOAD FUNCTIONALITY
 // ==========================================
 
@@ -435,56 +667,139 @@ function initUpload() {
   });
 }
 
+let selectedFileForUpload = null;
+
 function initEmptyStateUpload() {
-  const emptyStateDropzone = document.getElementById('emptyStateDropzone');
+  const circularDropzone = document.getElementById('circularDropzone');
   const emptyStateFileInput = document.getElementById('emptyStateFileInput');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const selectedFileName = document.getElementById('selectedFileName');
 
-  if (!emptyStateDropzone || !emptyStateFileInput) return;
+  if (!circularDropzone || !emptyStateFileInput) return;
 
-  emptyStateDropzone.addEventListener('click', () => emptyStateFileInput.click());
+  // Click to browse
+  circularDropzone.addEventListener('click', () => emptyStateFileInput.click());
 
+  // File selected via input
   emptyStateFileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
+      selectedFileForUpload = e.target.files[0];
+      showSelectedFile(selectedFileForUpload);
     }
   });
 
+  // Upload button click
+  if (btnUploadCircular) {
+    btnUploadCircular.addEventListener('click', () => {
+      if (selectedFileForUpload) {
+        handleFileUpload(selectedFileForUpload);
+      }
+    });
+  }
+
   // Drag and drop
-  emptyStateDropzone.addEventListener('dragover', (e) => {
+  circularDropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    emptyStateDropzone.classList.add('dragging');
+    circularDropzone.classList.add('dragging');
   });
 
-  emptyStateDropzone.addEventListener('dragleave', () => {
-    emptyStateDropzone.classList.remove('dragging');
+  circularDropzone.addEventListener('dragleave', () => {
+    circularDropzone.classList.remove('dragging');
   });
 
-  emptyStateDropzone.addEventListener('drop', (e) => {
+  circularDropzone.addEventListener('drop', (e) => {
     e.preventDefault();
-    emptyStateDropzone.classList.remove('dragging');
+    circularDropzone.classList.remove('dragging');
 
     if (e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
+      selectedFileForUpload = e.dataTransfer.files[0];
+      showSelectedFile(selectedFileForUpload);
     }
   });
 }
 
+function showSelectedFile(file) {
+  const selectedFileName = document.getElementById('selectedFileName');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const uploadText = document.querySelector('.upload-text');
+  const uploadSubtext = document.querySelector('.upload-subtext');
+  const uploadHint = document.querySelector('.upload-hint');
+
+  if (selectedFileName && btnUploadCircular) {
+    // Hide the upload instructions
+    if (uploadText) uploadText.style.display = 'none';
+    if (uploadSubtext) uploadSubtext.style.display = 'none';
+    if (uploadHint) uploadHint.style.display = 'none';
+
+    // Show selected file name
+    selectedFileName.textContent = file.name;
+    selectedFileName.style.display = 'block';
+
+    // Show upload button
+    btnUploadCircular.style.display = 'flex';
+  }
+}
+
+function updateCircularProgress(percent) {
+  const progressRing = document.getElementById('progressRing');
+  if (!progressRing) return;
+
+  // Circle circumference = 2 * π * r
+  // r = 120 (from the SVG)
+  const radius = 120;
+  const circumference = 2 * Math.PI * radius;
+
+  // Calculate stroke-dashoffset based on percentage
+  const offset = circumference - (percent / 100) * circumference;
+
+  progressRing.style.strokeDasharray = circumference;
+  progressRing.style.strokeDashoffset = offset;
+}
+
 async function handleFileUpload(file) {
-  const status = document.getElementById('uploadStatus');
-  status.className = 'upload-status visible uploading';
-  status.textContent = `Uploading ${file.name}...`;
+  const circularDropzone = document.getElementById('circularDropzone');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const progressRing = document.getElementById('progressRing');
+
+  // Show uploading state
+  if (circularDropzone) circularDropzone.classList.add('uploading');
+  if (btnUploadCircular) btnUploadCircular.style.display = 'none';
 
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('userId', USER_ID);
 
-    const response = await fetch(`${API_URL}/api/tasks`, {
-      method: 'POST',
-      body: formData,
+    // Create XMLHttpRequest for progress tracking
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = (e.loaded / e.total) * 100;
+        updateCircularProgress(percentComplete);
+      }
     });
 
-    const data = await response.json();
+    // Handle completion
+    const uploadPromise = new Promise((resolve, reject) => {
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`Upload failed: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed'));
+      });
+    });
+
+    xhr.open('POST', `${API_URL}/api/tasks`);
+    xhr.send(formData);
+
+    const data = await uploadPromise;
 
     if (data.success) {
       const taskId = data.data.taskId;
@@ -515,41 +830,50 @@ async function handleFileUpload(file) {
         console.log('📁 No folder selected, task added to All Documents');
       }
 
-      status.className = 'upload-status visible success';
-      status.textContent = `✓ ${file.name} uploaded successfully! Processing...`;
+      // Complete the progress ring
+      updateCircularProgress(100);
 
-      // Clear file input
-      document.getElementById('fileInput').value = '';
-
-      // Close modal
-      const uploadModal = document.getElementById('uploadModal');
-      if (uploadModal) {
-        setTimeout(() => {
-          uploadModal.classList.remove('active');
-        }, 1000);
-      }
+      // Clear the selected file
+      selectedFileForUpload = null;
 
       // Reload tasks and show viewer for new task
       setTimeout(async () => {
         await loadTasks();
-        status.classList.remove('visible');
 
         // Find the newly uploaded task and show it
         const newTask = tasks.find(t => t.id === taskId);
         if (newTask) {
           showViewer(newTask);
         }
-      }, 1500);
+      }, 500);
     } else {
       throw new Error(data.error || 'Upload failed');
     }
   } catch (error) {
-    status.className = 'upload-status visible error';
-    status.textContent = `✗ Upload failed: ${error.message}`;
+    console.error('Upload failed:', error);
 
+    // Show error state
+    if (circularDropzone) {
+      circularDropzone.classList.remove('uploading');
+      circularDropzone.classList.add('error');
+    }
+
+    // Reset progress
+    updateCircularProgress(0);
+
+    // Show error message
+    const selectedFileName = document.getElementById('selectedFileName');
+    if (selectedFileName) {
+      selectedFileName.textContent = `✗ Upload failed: ${error.message}`;
+      selectedFileName.style.color = '#ef4444';
+    }
+
+    // Reset after 3 seconds
     setTimeout(() => {
-      status.classList.remove('visible');
-    }, 5000);
+      if (circularDropzone) circularDropzone.classList.remove('error');
+      selectedFileForUpload = null;
+      renderDocumentGrid(); // Refresh to show clean state
+    }, 3000);
   }
 }
 
@@ -1165,16 +1489,28 @@ function renderDocumentGrid() {
       // Show upload dropzone for empty "All Documents" view
       grid.innerHTML = `
         <div class="empty-state" id="emptyState">
-          <div class="empty-state-upload-dropzone" id="emptyStateDropzone">
-            <input type="file" id="emptyStateFileInput" accept=".pdf,image/*" hidden>
-            <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <p class="upload-text">Drop your document here</p>
-            <p class="upload-subtext">or click to browse</p>
-            <small class="upload-hint">PDF, PNG, JPG (Max 50MB)</small>
+          <div class="circular-upload-container">
+            <div class="circular-dropzone" id="circularDropzone">
+              <input type="file" id="emptyStateFileInput" accept=".pdf,image/*" hidden>
+              <svg class="circular-progress-ring" width="280" height="280">
+                <circle class="progress-ring-bg" cx="140" cy="140" r="120" />
+                <circle class="progress-ring-fill" cx="140" cy="140" r="120" id="progressRing" />
+              </svg>
+              <div class="dropzone-content">
+                <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <p class="upload-text">Drop your file here</p>
+                <p class="upload-subtext">or click to browse</p>
+                <small class="upload-hint">PDF, PNG, JPG (Max 50MB)</small>
+                <div class="selected-file-name" id="selectedFileName" style="display: none;"></div>
+              </div>
+            </div>
+            <button class="btn-upload-circular" id="btnUploadCircular" style="display: none;">
+              Upload
+            </button>
           </div>
         </div>
       `;
@@ -2367,3 +2703,14 @@ function showSaveStatus(status) {
 // All changes are saved to database every 3 seconds
 // Backend handles S3 upload on session end
 // No localStorage needed - database is source of truth
+
+// =====================================================
+// DEBUG: Toggle debug lines with 'b' key
+// =====================================================
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'b' || e.key === 'B') {
+    document.querySelectorAll('.debug-line').forEach(line => {
+      line.style.display = line.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+});

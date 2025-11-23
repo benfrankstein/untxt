@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings - UNTXT</title>
   <link rel="stylesheet" href="base.css?v=13">
-  <link rel="stylesheet" href="sidebar-nav.css?v=30">
-  <link rel="stylesheet" href="settings.css?v=17">
+  <link rel="stylesheet" href="sidebar-nav.css?v=31">
+  <link rel="stylesheet" href="settings.css?v=29">
 </head>
 <body>
 
@@ -237,16 +237,57 @@
               <div class="credits-balance-display">
                 <div class="credits-balance-amount" id="settingsCreditsBalance">--</div>
                 <p class="credits-balance-label">credits available</p>
-                <p class="credits-info-text">1 credit = 1 page processed. Credits never expire.</p>
               </div>
             </div>
 
             <!-- Purchase Credits Card -->
             <div class="settings-card">
               <h2>Purchase Credits</h2>
-              <p class="help-text">Choose a credit package to add to your account</p>
-              <div class="credits-packages-grid" id="settingsCreditsPackages">
-                <div class="package-loading">Loading packages...</div>
+              <p class="help-text">
+                Credits are used to process your documents. <strong>1 credit = 1 page processed.</strong>
+                Credits never expire and are non-refundable once spent.
+              </p>
+
+              <div class="credits-purchase-form">
+                <label class="form-label">Select Amount</label>
+                <div class="amount-selection" id="amountSelection">
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="1" data-price="5">
+                    <span class="amount-label">$5</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="2" data-price="10">
+                    <span class="amount-label">$10</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="3" data-price="25" checked>
+                    <span class="amount-label">$25</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="4" data-price="50">
+                    <span class="amount-label">$50</span>
+                  </label>
+                  <label class="amount-option amount-option-other">
+                    <input type="radio" name="creditAmount" value="other" data-price="0">
+                    <span class="amount-label">
+                      Other
+                      <input type="number"
+                             id="customAmountInput"
+                             class="custom-amount-input"
+                             placeholder="$5"
+                             min="5"
+                             step="1">
+                    </span>
+                  </label>
+                </div>
+
+                <div class="credits-amount-display" id="creditsAmountDisplay">
+                  <span class="credits-count">208</span> credits
+                </div>
+
+                <button class="btn-purchase-credits" id="purchaseCreditsBtn">
+                  Purchase Credits
+                </button>
               </div>
             </div>
 
@@ -328,7 +369,7 @@
     </div>
   </div>
 
-  <script src="sidebar-nav.js?v=12"></script>
-  <script src="settings.js?v=4"></script>
+  <script src="sidebar-nav.js?v=15"></script>
+  <script src="settings.js?v=6"></script>
 </body>
 </html>
