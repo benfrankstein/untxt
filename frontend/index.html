@@ -6,7 +6,7 @@
   <title>UNTXT - Document OCR</title>
   <link rel="stylesheet" href="base.css?v=13">
   <link rel="stylesheet" href="sidebar-nav.css?v=30">
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 
@@ -235,19 +235,11 @@
     <!-- VIEW 1: DASHBOARD (Default View) -->
     <div id="dashboardView" class="view active">
 
-      <!-- Recent Documents -->
+      <!-- Project Documents -->
       <section class="recent-section">
         <div class="section-header-inline">
-          <h2>Recent Documents</h2>
+          <h2 id="projectNameHeader">TESTPROJECT</h2>
           <div class="header-controls">
-            <button class="btn-upload" id="uploadBtn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              <span>Upload</span>
-            </button>
             <div class="stats-inline" id="statsInline">
               <span><strong id="statTotalInline">0</strong> total</span>
               <span><strong id="statProcessingInline">0</strong> processing</span>
