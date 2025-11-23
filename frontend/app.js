@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initInactivityTracking();
 
   initUpload();
+  initEmptyStateUpload();
   initWebSocket();
   initFolders();
   loadFolders();
@@ -427,6 +428,40 @@ function initUpload() {
   uploadDropzone.addEventListener('drop', (e) => {
     e.preventDefault();
     uploadDropzone.classList.remove('dragging');
+
+    if (e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  });
+}
+
+function initEmptyStateUpload() {
+  const emptyStateDropzone = document.getElementById('emptyStateDropzone');
+  const emptyStateFileInput = document.getElementById('emptyStateFileInput');
+
+  if (!emptyStateDropzone || !emptyStateFileInput) return;
+
+  emptyStateDropzone.addEventListener('click', () => emptyStateFileInput.click());
+
+  emptyStateFileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleFileUpload(e.target.files[0]);
+    }
+  });
+
+  // Drag and drop
+  emptyStateDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    emptyStateDropzone.classList.add('dragging');
+  });
+
+  emptyStateDropzone.addEventListener('dragleave', () => {
+    emptyStateDropzone.classList.remove('dragging');
+  });
+
+  emptyStateDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    emptyStateDropzone.classList.remove('dragging');
 
     if (e.dataTransfer.files.length > 0) {
       handleFileUpload(e.dataTransfer.files[0]);
@@ -1126,24 +1161,38 @@ function renderDocumentGrid() {
   }
 
   if (filteredTasks.length === 0) {
-    const emptyMessage = currentFolderId === 'all'
-      ? 'No documents yet'
-      : 'No documents in this folder';
-
-    const emptySubtext = currentFolderId === 'all'
-      ? 'Upload your first document to get started'
-      : 'Drag and drop documents here to organize them';
-
-    grid.innerHTML = `
-      <div class="empty-state">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-        </svg>
-        <p>${emptyMessage}</p>
-        <small>${emptySubtext}</small>
-      </div>
-    `;
+    if (currentFolderId === 'all') {
+      // Show upload dropzone for empty "All Documents" view
+      grid.innerHTML = `
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-upload-dropzone" id="emptyStateDropzone">
+            <input type="file" id="emptyStateFileInput" accept=".pdf,image/*" hidden>
+            <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <p class="upload-text">Drop your document here</p>
+            <p class="upload-subtext">or click to browse</p>
+            <small class="upload-hint">PDF, PNG, JPG (Max 50MB)</small>
+          </div>
+        </div>
+      `;
+      // Re-initialize upload functionality
+      initEmptyStateUpload();
+    } else {
+      // Show simple empty message for specific folders
+      grid.innerHTML = `
+        <div class="empty-state">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          <p>No documents in this folder</p>
+          <small>Drag and drop documents here to organize them</small>
+        </div>
+      `;
+    }
     return;
   }
 

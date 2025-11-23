@@ -59,30 +59,30 @@
    Change these to update colors globally
    ============================================ */
 :root {
-  /* Brand Colors - From Landing Page */
-  --color-bg: #f3f0e7;
-  --color-bg-surface: #ffffff;
+  /* Brand Colors - Claude.ai inspired palette */
+  --color-bg: #FAF9F5;           /* Main content area - very light off-white */
+  --color-bg-surface: #F5F4EE;   /* Sidebar - warm light gray/beige */
   --color-neutral: #aeaa97;
-  --color-text: #090706;
-  --color-text-secondary: #090706;
-  --color-accent: #abdc38;
+  --color-text: #000000;         /* Pure black for text */
+  --color-text-secondary: rgba(0, 0, 0, 0.65);  /* 65% black for secondary text */
+  --color-accent: #7ba82e;
 
   /* Accent/Primary Colors */
-  --color-primary: #abdc38;
-  --color-primary-hover: #b8e858;
-  --color-primary-active: #98c930;
-  --color-primary-text: #000000;  /* Button text color */
+  --color-primary: #7ba82e;
+  --color-primary-hover: #8fb938;
+  --color-primary-active: #6a9428;
+  --color-primary-text: #ffffff;  /* Button text color */
 
   /* Secondary Button Colors (outline → fill) */
   --btn-secondary-bg: transparent;
-  --btn-secondary-bg-hover: #abdc38;
-  --btn-secondary-bg-active: rgba(171, 220, 56, 0.40);
+  --btn-secondary-bg-hover: #7ba82e;
+  --btn-secondary-bg-active: rgba(123, 168, 46, 0.40);
   --btn-secondary-fg: #000000;
   --btn-secondary-fg-hover: #000000;
   --btn-secondary-fg-active: #000000;
-  --btn-secondary-border: #abdc38;
-  --btn-secondary-border-hover: #abdc38;
-  --btn-secondary-border-active: #98c930;
+  --btn-secondary-border: #7ba82e;
+  --btn-secondary-border-hover: #7ba82e;
+  --btn-secondary-border-active: #6a9428;
 
   /* System Colors */
   --color-error: #ff4444;

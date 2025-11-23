@@ -3,144 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payment Successful - UNTXT</title>
+  <title>Settings - UNTXT</title>
   <link rel="stylesheet" href="base.css?v=13">
   <link rel="stylesheet" href="sidebar-nav.css?v=30">
-  <link rel="stylesheet" href="style.css?v=12">
-  <style>
-    .success-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 2rem;
-      text-align: center;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      margin-left: 260px;
-      transition: margin-left 300ms cubic-bezier(0.2, 0, 0.2, 1);
-    }
-
-    .sidebar-nav.collapsed ~ .success-container {
-      margin-left: 72px;
-    }
-
-    @media (max-width: 1024px) {
-      .success-container {
-        margin-left: 0;
-      }
-    }
-
-    .success-card {
-      background: white;
-      border-radius: 16px;
-      padding: 3rem 2rem;
-      max-width: 500px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    }
-
-    .success-icon {
-      width: 80px;
-      height: 80px;
-      margin: 0 auto 1.5rem;
-      border-radius: 50%;
-      background: #10b981;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      animation: scaleIn 0.5s ease-out;
-    }
-
-    .success-icon svg {
-      width: 48px;
-      height: 48px;
-      stroke: white;
-      stroke-width: 3;
-    }
-
-    @keyframes scaleIn {
-      from {
-        transform: scale(0);
-        opacity: 0;
-      }
-      to {
-        transform: scale(1);
-        opacity: 1;
-      }
-    }
-
-    .success-title {
-      font-size: 2rem;
-      font-weight: bold;
-      color: #1f2937;
-      margin-bottom: 1rem;
-    }
-
-    .success-message {
-      font-size: 1.1rem;
-      color: #6b7280;
-      margin-bottom: 2rem;
-      line-height: 1.6;
-    }
-
-    .credits-added {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: #f3f4f6;
-      padding: 1rem 1.5rem;
-      border-radius: 8px;
-      margin-bottom: 2rem;
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: #10b981;
-    }
-
-    .btn-return {
-      display: inline-block;
-      padding: 0.875rem 2rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      text-decoration: none;
-      border-radius: 8px;
-      font-weight: 600;
-      transition: transform 0.2s, box-shadow 0.2s;
-      cursor: pointer;
-      border: none;
-      font-size: 1rem;
-    }
-
-    .btn-return:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    }
-
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid #f3f4f6;
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1rem;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .status-message {
-      color: #6b7280;
-      font-size: 1rem;
-      margin-top: 1rem;
-    }
-
-    .error-message {
-      color: #ef4444;
-      font-size: 1rem;
-      margin-top: 1rem;
-    }
-  </style>
+  <link rel="stylesheet" href="settings.css?v=17">
 </head>
 <body>
 
@@ -211,7 +77,6 @@
               </button>
             </div>
           </div>
-          <!-- More projects will be loaded dynamically -->
         </div>
       </div>
     </nav>
@@ -289,119 +154,181 @@
     </div>
   </aside>
 
-  <div class="success-container">
-    <div class="success-card">
-      <div id="loadingState">
-        <div class="loading-spinner"></div>
-        <h1 class="success-title">Processing Payment...</h1>
-        <p class="status-message">Please wait while we verify your payment and add credits to your account.</p>
+  <!-- Main App Wrapper -->
+  <div class="app-wrapper">
+    <div class="settings-container">
+
+      <!-- Settings Header -->
+      <div class="settings-header">
+        <h1>Settings</h1>
       </div>
 
-      <div id="successState" style="display: none;">
-        <div class="success-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <h1 class="success-title">Payment Successful!</h1>
-        <p class="success-message">Your payment has been processed and credits have been added to your account.</p>
-        <div class="credits-added">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M12 6v6l4 2"></path>
-          </svg>
-          <span id="creditsAmount">+0 credits</span>
-        </div>
-        <button class="btn-return" onclick="returnToApp()">Return to App</button>
+      <!-- Settings Layout -->
+      <div class="settings-layout">
+
+        <!-- Left Navigation -->
+        <aside class="settings-sidebar">
+          <nav class="settings-nav">
+            <button class="settings-nav-item active" data-section="account">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <span>General</span>
+            </button>
+            <button class="settings-nav-item" data-section="credits">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
+              </svg>
+              <span>Credits</span>
+            </button>
+            <button class="settings-nav-item" data-section="billing">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                <line x1="2" y1="10" x2="22" y2="10"></line>
+              </svg>
+              <span>Billing</span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Right Content -->
+        <main class="settings-content">
+
+          <!-- Account Section -->
+          <section class="settings-section active" id="accountSection">
+
+            <!-- Profile Card -->
+            <div class="settings-card">
+              <h2>Profile</h2>
+
+              <div class="field-grid">
+                <div class="field-item field-item-fullname">
+                  <label>Full Name</label>
+                  <div class="field-value-with-avatar">
+                    <div class="profile-avatar-inline" id="profileAvatar">U</div>
+                    <div class="field-value" id="profileName">Loading...</div>
+                  </div>
+                </div>
+                <div class="field-item">
+                  <label>Username</label>
+                  <div class="field-value" id="username">-</div>
+                </div>
+                <div class="field-item">
+                  <label>Email</label>
+                  <div class="field-value" id="profileEmail">user@example.com</div>
+                </div>
+                <div class="field-item">
+                  <label>Phone Number</label>
+                  <div class="field-value" id="phoneNumber">-</div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- Credits Section -->
+          <section class="settings-section" id="creditsSection">
+
+            <!-- Current Balance Card -->
+            <div class="settings-card">
+              <h2>Current Balance</h2>
+              <div class="credits-balance-display">
+                <div class="credits-balance-amount" id="settingsCreditsBalance">--</div>
+                <p class="credits-balance-label">credits available</p>
+                <p class="credits-info-text">1 credit = 1 page processed. Credits never expire.</p>
+              </div>
+            </div>
+
+            <!-- Purchase Credits Card -->
+            <div class="settings-card">
+              <h2>Purchase Credits</h2>
+              <p class="help-text">Choose a credit package to add to your account</p>
+              <div class="credits-packages-grid" id="settingsCreditsPackages">
+                <div class="package-loading">Loading packages...</div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- Billing Section -->
+          <section class="settings-section" id="billingSection">
+
+            <!-- Plan Card -->
+            <div class="settings-card">
+              <div class="billing-plan">
+                <div class="billing-plan-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
+                  </svg>
+                </div>
+                <div class="billing-plan-info">
+                  <h3 class="billing-plan-name">Pro Plan</h3>
+                  <p class="billing-plan-frequency">Monthly</p>
+                  <p class="billing-plan-renewal">Your subscription renews automatically on <span id="renewalDate">--</span>.</p>
+                </div>
+                <button class="btn-secondary" id="changePlanBtn">Change Plan</button>
+              </div>
+            </div>
+
+            <!-- Payment Method Card -->
+            <div class="settings-card">
+              <h2>Payment</h2>
+              <div class="billing-payment">
+                <div class="billing-payment-method">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                    <line x1="1" y1="10" x2="23" y2="10"></line>
+                  </svg>
+                  <span>Link by Stripe</span>
+                </div>
+                <button class="btn-secondary" id="updatePaymentBtn">Update</button>
+              </div>
+            </div>
+
+            <!-- Invoices Card -->
+            <div class="settings-card">
+              <h2>Invoices</h2>
+              <div class="billing-invoices">
+                <table class="invoices-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invoicesTableBody">
+                    <tr>
+                      <td colspan="4" class="no-invoices">No invoices available</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Cancellation Card -->
+            <div class="settings-card">
+              <h2>Cancellation</h2>
+              <div class="billing-cancellation">
+                <p class="help-text">Cancel your subscription</p>
+                <button class="btn-danger" id="cancelSubscriptionBtn">Cancel</button>
+              </div>
+            </div>
+
+          </section>
+
+        </main>
+
       </div>
 
-      <div id="errorState" style="display: none;">
-        <div class="success-icon" style="background: #ef4444;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </div>
-        <h1 class="success-title">Payment Processing Issue</h1>
-        <p class="error-message" id="errorMessage">We're having trouble processing your payment. Please check your account or contact support.</p>
-        <button class="btn-return" onclick="returnToApp()">Return to App</button>
-      </div>
     </div>
   </div>
 
-  <script>
-    const API_BASE = 'http://localhost:8080/api';
-
-    async function verifyAndApplyPayment() {
-      // Get session_id from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session_id');
-
-      if (!sessionId) {
-        showError('No session ID found');
-        return;
-      }
-
-      try {
-        // Get auth token
-        const token = localStorage.getItem('token');
-        if (!token) {
-          window.location.href = '/login.html';
-          return;
-        }
-
-        // Call backend to verify and apply payment
-        const response = await fetch(`${API_BASE}/credits/verify-payment`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ sessionId })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          showSuccess(data.data.creditsAdded || data.data.credits);
-
-          // Auto-redirect after 3 seconds
-          setTimeout(() => {
-            returnToApp();
-          }, 3000);
-        } else {
-          showError(data.message || 'Payment verification failed');
-        }
-      } catch (error) {
-        console.error('Error verifying payment:', error);
-        showError('Failed to verify payment. Please contact support.');
-      }
-    }
-
-    function showSuccess(credits) {
-      document.getElementById('loadingState').style.display = 'none';
-      document.getElementById('successState').style.display = 'block';
-      document.getElementById('creditsAmount').textContent = `+${credits} credits`;
-    }
-
-    function showError(message) {
-      document.getElementById('loadingState').style.display = 'none';
-      document.getElementById('errorState').style.display = 'block';
-      document.getElementById('errorMessage').textContent = message;
-    }
-
-    function returnToApp() {
-      window.location.href = '/';
-    }
-
-    // Start verification when page loads
-    verifyAndApplyPayment();
-  </script>
-
   <script src="sidebar-nav.js?v=11"></script>
-  <script>
-    // Initialize sidebar navigation
-    SidebarNav.init('documents');
-  </script>
+  <script src="settings.js?v=3"></script>
 </body>
 </html>
