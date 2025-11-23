@@ -18,23 +18,38 @@ function initializeSettings() {
   const navItems = document.querySelectorAll('.settings-nav-item');
   const sections = document.querySelectorAll('.settings-section');
 
+  // Tab switching function
+  const switchToSection = (sectionId) => {
+    // Update active nav item
+    navItems.forEach(nav => {
+      if (nav.dataset.section === sectionId) {
+        nav.classList.add('active');
+      } else {
+        nav.classList.remove('active');
+      }
+    });
+
+    // Update active section
+    sections.forEach(section => section.classList.remove('active'));
+    const targetSection = document.getElementById(`${sectionId}Section`);
+    if (targetSection) {
+      targetSection.classList.add('active');
+    }
+  };
+
   // Tab switching
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const sectionId = item.dataset.section;
-
-      // Update active nav item
-      navItems.forEach(nav => nav.classList.remove('active'));
-      item.classList.add('active');
-
-      // Update active section
-      sections.forEach(section => section.classList.remove('active'));
-      const targetSection = document.getElementById(`${sectionId}Section`);
-      if (targetSection) {
-        targetSection.classList.add('active');
-      }
+      switchToSection(sectionId);
     });
   });
+
+  // Check for hash in URL and switch to that section
+  const hash = window.location.hash.substring(1); // Remove the '#'
+  if (hash && ['account', 'credits', 'billing'].includes(hash)) {
+    switchToSection(hash);
+  }
 
   // Buy credits button
   const buyCreditsBtn = document.getElementById('buyCreditsBtn');

@@ -334,26 +334,8 @@ async function initCredits() {
   // Fetch packages for later
   await fetchCreditPackages();
 
-  // Set up event listeners
-  const buyCreditsBtn = document.getElementById('buyCreditsBtn');
-  if (buyCreditsBtn) {
-    buyCreditsBtn.addEventListener('click', openPurchaseCreditsModal);
-  }
-
-  const closePurchaseBtn = document.getElementById('closePurchaseModal');
-  if (closePurchaseBtn) {
-    closePurchaseBtn.addEventListener('click', closePurchaseCreditsModal);
-  }
-
-  // Close modal when clicking outside
-  const purchaseModal = document.getElementById('purchaseCreditsModal');
-  if (purchaseModal) {
-    purchaseModal.addEventListener('click', (e) => {
-      if (e.target === purchaseModal) {
-        closePurchaseCreditsModal();
-      }
-    });
-  }
+  // Event listeners removed - credits modal has been replaced with settings page
+  // Credits purchase now handled through Settings > Credits section
 
   // Refresh balance every 30 seconds
   setInterval(fetchCreditBalance, 30000);

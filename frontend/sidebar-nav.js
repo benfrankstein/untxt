@@ -394,14 +394,8 @@ const SidebarNav = {
    * Handle buy credits click
    */
   handleBuyCredits() {
-    // Trigger the purchase modal if it exists on the page
-    const purchaseModal = document.getElementById('purchaseCreditsModal');
-    if (purchaseModal) {
-      purchaseModal.classList.add('active');
-    } else {
-      // Fallback: redirect to index page with modal trigger
-      window.location.href = 'index.html?action=buy-credits';
-    }
+    // Navigate to settings page with credits section active
+    window.location.href = 'settings.html#credits';
   },
 
   /**
