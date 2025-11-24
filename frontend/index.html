@@ -6,7 +6,7 @@
   <title>UNTXT - Document OCR</title>
   <link rel="stylesheet" href="base.css?v=13">
   <link rel="stylesheet" href="sidebar-nav.css?v=31">
-  <link rel="stylesheet" href="style.css?v=60">
+  <link rel="stylesheet" href="style.css?v=62">
 </head>
 <body>
 
@@ -444,11 +444,64 @@
     <span class="ws-tooltip">Live updates</span>
   </div>
 
+  <!-- Format Selection Modal -->
+  <div class="modal-overlay" id="formatModal">
+    <div class="modal-content">
+      <h2 class="modal-title">Select Output Formats</h2>
+      <p class="modal-subtitle">Choose which formats you'd like to generate</p>
+
+      <div class="format-options">
+        <label class="format-option">
+          <input type="checkbox" id="formatModalHtml" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.html</span>
+            <span class="format-option-label">HTML</span>
+            <span class="format-option-description">Replica of original document</span>
+            <span class="format-option-warning">⚠ Takes longer to process</span>
+          </div>
+        </label>
+
+        <label class="format-option">
+          <input type="checkbox" id="formatModalTxt" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.txt</span>
+            <span class="format-option-label">Text</span>
+            <span class="format-option-description">Plain text extracted from HTML</span>
+          </div>
+        </label>
+
+        <label class="format-option">
+          <input type="checkbox" id="formatModalJson" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.json</span>
+            <span class="format-option-label">JSON</span>
+            <span class="format-option-description">Structured data with metadata</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <label class="modal-save-default">
+          <span>Save as default</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="saveAsDefault" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+
+        <div class="modal-actions">
+          <button class="btn-modal-cancel" id="formatModalCancel">Cancel</button>
+          <button class="btn-modal-confirm" id="formatModalConfirm">Process</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div> <!-- End .app-wrapper -->
 
   <script src="https://js.stripe.com/v3/"></script>
   <script src="sidebar-nav.js?v=15"></script>
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=31"></script>
   <script src="credits.js"></script>
   <script>
     // Initialize sidebar navigation

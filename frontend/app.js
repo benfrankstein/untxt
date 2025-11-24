@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initInactivityTracking();
 
   initUpload();
+  initFormatModal();
   initEmptyStateUpload();
   initWebSocket();
   initFolders();
@@ -446,11 +447,11 @@ function renderFilesList() {
 
   // Mock file data
   const mockFiles = [
-    { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Ready' },
+    { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Completed' },
     { name: 'Invoice_March.pdf', size: '156 KB', pages: 1, date: 'Jan 14, 2025', status: 'Processing', progress: 67, eta: '30 sec' },
-    { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Ready' },
+    { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Completed' },
     { name: 'Contract_Final.pdf', size: '1.2 MB', pages: 15, date: 'Jan 10, 2025', status: 'Completed' },
-    { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Ready' }
+    { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Completed' }
   ];
 
   grid.innerHTML = `
@@ -463,18 +464,6 @@ function renderFilesList() {
             </th>
             <th class="sortable">Name</th>
             <th class="sortable"># of Pages</th>
-            <th class="format-col">
-              <input type="checkbox" id="selectAllHtml" class="format-header-checkbox" checked>
-              <label for="selectAllHtml">.html</label>
-            </th>
-            <th class="format-col">
-              <input type="checkbox" id="selectAllTxt" class="format-header-checkbox" checked>
-              <label for="selectAllTxt">.txt</label>
-            </th>
-            <th class="format-col">
-              <input type="checkbox" id="selectAllJson" class="format-header-checkbox" checked>
-              <label for="selectAllJson">.json</label>
-            </th>
             <th class="sortable">Status</th>
             <th>Action</th>
             <th></th>
@@ -484,7 +473,6 @@ function renderFilesList() {
           ${mockFiles.map(file => {
             const isCompleted = file.status === 'Completed';
             const isProcessing = file.status === 'Processing';
-            const isReady = file.status === 'Ready';
 
             // Render status cell differently for processing files
             let statusCell;
@@ -502,11 +490,9 @@ function renderFilesList() {
               statusCell = `<span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>`;
             }
 
-            // Action button based on status
+            // Action button - only show View for completed files
             let actionButton = '';
-            if (isReady) {
-              actionButton = `<button class="btn-ocr">OCR</button>`;
-            } else if (isCompleted) {
+            if (isCompleted) {
               actionButton = `
                 <button class="btn-view">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -531,15 +517,6 @@ function renderFilesList() {
                   ${file.name}
                 </td>
                 <td class="file-pages">${file.pages}</td>
-                <td class="format-col">
-                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="html" checked>
-                </td>
-                <td class="format-col">
-                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="txt" checked>
-                </td>
-                <td class="format-col">
-                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="json" checked>
-                </td>
                 <td class="file-status">
                   ${statusCell}
                 </td>
@@ -593,38 +570,6 @@ function renderFilesList() {
     selectAllCheckbox.addEventListener('change', (e) => {
       const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles)');
       fileCheckboxes.forEach(checkbox => {
-        checkbox.checked = e.target.checked;
-      });
-    });
-  }
-
-  // Setup format column header checkboxes (toggle all files for that format)
-  const selectAllHtml = document.getElementById('selectAllHtml');
-  const selectAllTxt = document.getElementById('selectAllTxt');
-  const selectAllJson = document.getElementById('selectAllJson');
-
-  if (selectAllHtml) {
-    selectAllHtml.addEventListener('change', (e) => {
-      const htmlCheckboxes = document.querySelectorAll('.format-checkbox[data-format="html"]');
-      htmlCheckboxes.forEach(checkbox => {
-        checkbox.checked = e.target.checked;
-      });
-    });
-  }
-
-  if (selectAllTxt) {
-    selectAllTxt.addEventListener('change', (e) => {
-      const txtCheckboxes = document.querySelectorAll('.format-checkbox[data-format="txt"]');
-      txtCheckboxes.forEach(checkbox => {
-        checkbox.checked = e.target.checked;
-      });
-    });
-  }
-
-  if (selectAllJson) {
-    selectAllJson.addEventListener('change', (e) => {
-      const jsonCheckboxes = document.querySelectorAll('.format-checkbox[data-format="json"]');
-      jsonCheckboxes.forEach(checkbox => {
         checkbox.checked = e.target.checked;
       });
     });
@@ -689,39 +634,157 @@ function renderFilesList() {
 }
 
 // ==========================================
+// FORMAT SELECTION MODAL
+// ==========================================
+
+let pendingUploadFiles = null;
+let isModalOpen = false;
+
+function initFormatModal() {
+  const modal = document.getElementById('formatModal');
+  const confirmBtn = document.getElementById('formatModalConfirm');
+  const cancelBtn = document.getElementById('formatModalCancel');
+  const saveDefaultCheckbox = document.getElementById('saveAsDefault');
+  const htmlCheckbox = document.getElementById('formatModalHtml');
+  const txtCheckbox = document.getElementById('formatModalTxt');
+  const jsonCheckbox = document.getElementById('formatModalJson');
+
+  // Load saved preferences from localStorage
+  const savedPrefs = localStorage.getItem('defaultFormats');
+  if (savedPrefs) {
+    try {
+      const prefs = JSON.parse(savedPrefs);
+      htmlCheckbox.checked = prefs.html !== false;
+      txtCheckbox.checked = prefs.txt !== false;
+      jsonCheckbox.checked = prefs.json !== false;
+    } catch (e) {
+      console.error('Error loading format preferences:', e);
+    }
+  }
+
+  // Handle Cancel button
+  cancelBtn.addEventListener('click', () => {
+    hideFormatModal();
+    pendingUploadFiles = null;
+    // Clear file input after a delay to prevent re-triggering
+    setTimeout(() => {
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput) fileInput.value = '';
+    }, 100);
+  });
+
+  // Handle Continue button
+  confirmBtn.addEventListener('click', () => {
+    const selectedFormats = {
+      html: htmlCheckbox.checked,
+      txt: txtCheckbox.checked,
+      json: jsonCheckbox.checked
+    };
+
+    // Check if at least one format is selected
+    if (!selectedFormats.html && !selectedFormats.txt && !selectedFormats.json) {
+      alert('Please select at least one output format');
+      return;
+    }
+
+    // Save as default if checkbox is checked
+    if (saveDefaultCheckbox.checked) {
+      localStorage.setItem('defaultFormats', JSON.stringify(selectedFormats));
+    }
+
+    // Hide modal
+    hideFormatModal();
+
+    // Process the upload with selected formats
+    if (pendingUploadFiles) {
+      processFileUpload(pendingUploadFiles, selectedFormats);
+      pendingUploadFiles = null;
+    }
+
+    // Clear file input after a delay to prevent re-triggering
+    setTimeout(() => {
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput) fileInput.value = '';
+    }, 100);
+  });
+
+  // Close modal when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      hideFormatModal();
+      pendingUploadFiles = null;
+      // Clear file input after a delay to prevent re-triggering
+      setTimeout(() => {
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+      }, 100);
+    }
+  });
+}
+
+function showFormatModal(files) {
+  // Prevent opening if already open
+  if (isModalOpen) {
+    return;
+  }
+
+  pendingUploadFiles = files;
+  const modal = document.getElementById('formatModal');
+  modal.classList.add('show');
+  isModalOpen = true;
+}
+
+function hideFormatModal() {
+  const modal = document.getElementById('formatModal');
+  modal.classList.remove('show');
+  isModalOpen = false;
+}
+
+function processFileUpload(files, formats) {
+  console.log('Processing upload with formats:', formats);
+  console.log('Files:', files);
+  // TODO: Implement actual file upload with format selection
+  // This will call the existing handleFileUpload or similar function
+  // but now it knows which formats to generate
+}
+
+// ==========================================
 // UPLOAD FUNCTIONALITY
 // ==========================================
 
 function initUpload() {
-  const uploadDropzone = document.getElementById('uploadDropzone');
   const fileInput = document.getElementById('fileInput');
 
-  uploadDropzone.addEventListener('click', () => fileInput.click());
+  // Note: No need to add click handler on label since it has for="fileInput"
+  // The HTML label already handles clicking the file input
 
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      showFormatModal(e.target.files);
     }
   });
 
-  // Drag and drop
-  uploadDropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadDropzone.classList.add('dragging');
-  });
+  // Drag and drop on the upload zone
+  const uploadZone = document.querySelector('.upload-zone');
+  if (uploadZone) {
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('dragging');
+    });
 
-  uploadDropzone.addEventListener('dragleave', () => {
-    uploadDropzone.classList.remove('dragging');
-  });
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('dragging');
+    });
 
-  uploadDropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadDropzone.classList.remove('dragging');
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragging');
 
-    if (e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  });
+      if (e.dataTransfer.files.length > 0) {
+        showFormatModal(e.dataTransfer.files);
+      }
+    });
+  }
 }
 
 let selectedFileForUpload = null;
