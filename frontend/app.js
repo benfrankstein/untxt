@@ -146,6 +146,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Render files list
   renderFilesList();
+
+  // Handle View button clicks - expand inline viewer
+  document.addEventListener('click', (e) => {
+    const viewBtn = e.target.closest('.btn-view');
+    if (viewBtn) {
+      e.stopPropagation();
+      const row = viewBtn.closest('.file-row');
+      const fileName = row.querySelector('.file-name').textContent.trim();
+      toggleInlineViewer(row, fileName);
+    }
+  });
+
   document.getElementById('deleteTaskBtn')?.addEventListener('click', () => deleteTaskFromViewer(currentTask.id));
   document.getElementById('retryBtn')?.addEventListener('click', retryTask);
   document.getElementById('backToListBtn')?.addEventListener('click', showDashboard);
@@ -630,6 +642,511 @@ function renderFilesList() {
         }
       }
     });
+  });
+}
+
+// ==========================================
+// INLINE VIEWER
+// ==========================================
+
+// Mock document data
+const mockDocuments = {
+  'annual-report-2024.pdf': {
+    html: `<h1>Annual Report 2024</h1>
+      <p>This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.</p>
+
+      <h2>Executive Summary</h2>
+      <p>The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.</p>
+      <p>Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.</p>
+
+      <h2>Financial Summary</h2>
+      <p><strong>Revenue:</strong> $1,234,567,890</p>
+      <p><strong>Operating Expenses:</strong> $890,123,456</p>
+      <p><strong>Net Income:</strong> $344,444,434</p>
+      <p><strong>EBITDA:</strong> $456,789,012</p>
+      <p><strong>Total Assets:</strong> $2,345,678,901</p>
+      <p><strong>Shareholder Equity:</strong> $1,567,890,123</p>
+
+      <h2>Market Performance</h2>
+      <p>Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.</p>
+      <p>Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.</p>
+
+      <h2>Operational Highlights</h2>
+      <p>Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.</p>
+      <p>Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.</p>
+
+      <h2>Future Outlook</h2>
+      <p>Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.</p>
+      <p>We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.</p>`,
+    txt: `Annual Report 2024
+
+This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.
+
+Executive Summary
+The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.
+
+Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.
+
+Financial Summary
+Revenue: $1,234,567,890
+Operating Expenses: $890,123,456
+Net Income: $344,444,434
+EBITDA: $456,789,012
+Total Assets: $2,345,678,901
+Shareholder Equity: $1,567,890,123
+
+Market Performance
+Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.
+
+Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.
+
+Operational Highlights
+Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.
+
+Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.
+
+Future Outlook
+Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.
+
+We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.`,
+    json: JSON.stringify({
+      title: 'Annual Report 2024',
+      company_name: 'Acme Corporation',
+      fiscal_year: 2024,
+      report_type: 'annual',
+      report_date: '2024-12-31',
+      pages: 156,
+      revenue: 1234567890,
+      operating_expenses: 890123456,
+      net_income: 344444434,
+      ebitda: 456789012,
+      total_assets: 2345678901,
+      shareholder_equity: 1567890123,
+      stock_price_change: '34%',
+      market_cap: '8.9B',
+      credit_rating: 'AA+',
+      quarterly_dividend: 2.50,
+      dividend_yield: 2.8,
+      earnings_per_share: 12.45,
+      price_to_earnings: 18.2,
+      return_on_equity: 22.0,
+      debt_to_equity: 0.49,
+      current_ratio: 2.1,
+      employee_count: 8450,
+      offices_worldwide: 34,
+      countries_operating: 67,
+      ceo_name: 'Jane Thompson',
+      cfo_name: 'Michael Chen',
+      auditor: 'Ernst & Young LLP',
+      processed_date: '2025-01-15',
+      file_size_mb: 12.8,
+      language: 'English',
+      customer_satisfaction: 94
+    }, null, 2)
+  },
+  'invoice_march.pdf': {
+    html: '<h1>Invoice</h1><p><strong>Invoice #:</strong> INV-2024-003</p><p><strong>Date:</strong> March 1, 2024</p><h2>Line Items</h2><ul><li>Service A - $100.00</li><li>Service B - $56.00</li></ul><p><strong>Total:</strong> $156.00</p>',
+    txt: 'Invoice\n\nInvoice #: INV-2024-003\nDate: March 1, 2024\n\nLine Items\n- Service A - $100.00\n- Service B - $56.00\n\nTotal: $156.00',
+    json: JSON.stringify({
+      invoice_number: 'INV-2024-003',
+      date: '2024-03-01',
+      line_items: [
+        { description: 'Service A', amount: 100.00 },
+        { description: 'Service B', amount: 56.00 }
+      ],
+      total: 156.00,
+      currency: 'USD'
+    }, null, 2)
+  },
+  'meeting-notes.pdf': {
+    html: '<h1>Meeting Notes</h1><p><strong>Date:</strong> January 12, 2025</p><h2>Attendees</h2><ul><li>John Doe</li><li>Jane Smith</li><li>Bob Johnson</li></ul><h2>Agenda</h2><ol><li>Project Updates</li><li>Budget Review</li><li>Next Steps</li></ol>',
+    txt: 'Meeting Notes\n\nDate: January 12, 2025\n\nAttendees\n- John Doe\n- Jane Smith\n- Bob Johnson\n\nAgenda\n1. Project Updates\n2. Budget Review\n3. Next Steps',
+    json: JSON.stringify({
+      meeting_date: '2025-01-12',
+      attendees: ['John Doe', 'Jane Smith', 'Bob Johnson'],
+      agenda: ['Project Updates', 'Budget Review', 'Next Steps'],
+      type: 'meeting_notes'
+    }, null, 2)
+  },
+  'contract_final.pdf': {
+    html: '<h1>Contract Agreement</h1><p>This agreement entered into on January 10, 2025...</p>',
+    txt: 'Contract Agreement\n\nThis agreement entered into on January 10, 2025...',
+    json: JSON.stringify({ type: 'contract', date: '2025-01-10' }, null, 2)
+  },
+  'presentation-slides.pdf': {
+    html: '<h1>Presentation</h1><p>Slide content here...</p>',
+    txt: 'Presentation\n\nSlide content here...',
+    json: JSON.stringify({ type: 'presentation', slides: 67 }, null, 2)
+  }
+};
+
+function toggleInlineViewer(row, fileName) {
+  const table = row.closest('tbody');
+  const existingViewer = table.querySelector('.inline-viewer-row');
+  const viewBtn = row.querySelector('.btn-view');
+
+  // If viewer is already open, close it
+  if (existingViewer) {
+    existingViewer.classList.add('closing');
+    // Remove class from the row
+    const openRow = table.querySelector('.file-row.has-drawer-open');
+
+    // Restore button to "View"
+    if (viewBtn) {
+      viewBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        View
+      `;
+    }
+
+    setTimeout(() => {
+      if (openRow) {
+        openRow.classList.remove('has-drawer-open');
+      }
+      existingViewer.remove();
+    }, 400);
+    return;
+  }
+
+  // Transform button to "Close"
+  if (viewBtn) {
+    viewBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"></path>
+      </svg>
+      Close
+    `;
+  }
+
+  // Add class to current row
+  row.classList.add('has-drawer-open');
+
+  // Get document data
+  const docKey = fileName.toLowerCase().replace(/\s+/g, '-');
+  const docData = mockDocuments[docKey] || {
+    html: '<p>No HTML content available</p>',
+    txt: 'No text content available',
+    json: JSON.stringify({ error: 'No data available' }, null, 2)
+  };
+
+  // Create viewer row
+  const viewerRow = document.createElement('tr');
+  viewerRow.className = 'inline-viewer-row';
+  viewerRow.innerHTML = `
+    <td colspan="6">
+      <div class="inline-viewer-slide-wrapper">
+        <div class="inline-viewer">
+          <div class="inline-viewer-header">
+            <h3 class="inline-viewer-title">${fileName}</h3>
+          </div>
+
+          <div class="inline-viewer-tabs">
+            <button class="inline-viewer-tab active" data-format="html">HTML</button>
+            <button class="inline-viewer-tab" data-format="txt">TXT</button>
+            <button class="inline-viewer-tab" data-format="json">JSON</button>
+          </div>
+
+          <div class="inline-viewer-download-toolbar">
+            <button class="btn-download-format" data-download="html">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download HTML
+            </button>
+            <button class="btn-download-format" data-download="txt">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download TXT
+            </button>
+            <button class="btn-download-format" data-download="json">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download JSON
+            </button>
+            <button class="btn-download-all" data-download="all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download All
+            </button>
+          </div>
+
+          <div class="inline-viewer-content-wrapper">
+            <div class="json-field-selector" style="display: none;">
+              <div class="json-selector-header">
+                <button class="json-preset-dropdown" type="button">
+                  <span class="json-preset-text">Select Preset...</span>
+                  <svg class="json-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </button>
+                <div class="json-preset-menu" style="display: none;"></div>
+              </div>
+              <div class="json-field-list"></div>
+              <div class="json-selector-actions">
+                <input type="text" class="json-preset-name" placeholder="Preset name..." />
+                <button class="btn-save-preset">Save Preset</button>
+              </div>
+            </div>
+            <div class="inline-viewer-content format-html">${docData.html}</div>
+          </div>
+        </div>
+      </div>
+    </td>
+  `;
+
+  // Insert viewer after current row
+  row.after(viewerRow);
+
+  // Setup tab switching
+  const tabs = viewerRow.querySelectorAll('.inline-viewer-tab');
+  const content = viewerRow.querySelector('.inline-viewer-content');
+  const jsonSelector = viewerRow.querySelector('.json-field-selector');
+  const contentWrapper = viewerRow.querySelector('.inline-viewer-content-wrapper');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      const format = tab.dataset.format;
+      content.className = `inline-viewer-content format-${format}`;
+
+      if (format === 'html') {
+        content.innerHTML = docData.html;
+        jsonSelector.style.display = 'none';
+        contentWrapper.classList.remove('has-json-sidebar');
+      } else if (format === 'txt') {
+        content.textContent = docData.txt;
+        jsonSelector.style.display = 'none';
+        contentWrapper.classList.remove('has-json-sidebar');
+      } else if (format === 'json') {
+        jsonSelector.style.display = 'flex';
+        contentWrapper.classList.add('has-json-sidebar');
+        initJsonFieldSelector(viewerRow, docData.json, fileName);
+      }
+    });
+  });
+
+  // Setup download buttons
+  const downloadButtons = viewerRow.querySelectorAll('[data-download]');
+  downloadButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const downloadType = btn.dataset.download;
+
+      if (downloadType === 'all') {
+        // Download all three formats as a ZIP (for now, download individually)
+        downloadFile(docData.html, `${fileName}.html`, 'text/html');
+        setTimeout(() => downloadFile(docData.txt, `${fileName}.txt`, 'text/plain'), 100);
+        setTimeout(() => downloadFile(docData.json, `${fileName}.json`, 'application/json'), 200);
+      } else if (downloadType === 'html') {
+        downloadFile(docData.html, `${fileName}.html`, 'text/html');
+      } else if (downloadType === 'txt') {
+        downloadFile(docData.txt, `${fileName}.txt`, 'text/plain');
+      } else if (downloadType === 'json') {
+        downloadFile(docData.json, `${fileName}.json`, 'application/json');
+      }
+    });
+  });
+}
+
+// Helper function to trigger file download
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ==========================================
+// JSON FIELD SELECTOR & PRESET MANAGEMENT
+// ==========================================
+
+function initJsonFieldSelector(viewerRow, jsonString, fileName) {
+  const jsonData = JSON.parse(jsonString);
+  const fields = extractJsonFields(jsonData);
+  const fieldList = viewerRow.querySelector('.json-field-list');
+  const content = viewerRow.querySelector('.inline-viewer-content');
+  const presetDropdown = viewerRow.querySelector('.json-preset-dropdown');
+  const presetText = viewerRow.querySelector('.json-preset-text');
+  const presetMenu = viewerRow.querySelector('.json-preset-menu');
+  const presetNameInput = viewerRow.querySelector('.json-preset-name');
+  const savePresetBtn = viewerRow.querySelector('.btn-save-preset');
+
+  // Load saved presets
+  loadPresetsIntoMenu(presetMenu);
+
+  // Toggle dropdown menu
+  presetDropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = presetMenu.style.display === 'block';
+    presetMenu.style.display = isOpen ? 'none' : 'block';
+    presetDropdown.classList.toggle('open', !isOpen);
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', () => {
+    presetMenu.style.display = 'none';
+    presetDropdown.classList.remove('open');
+  });
+
+  // Populate field checkboxes
+  fieldList.innerHTML = '';
+  fields.forEach(field => {
+    const label = document.createElement('label');
+    label.className = 'json-field-item';
+    label.innerHTML = `
+      <input type="checkbox" value="${field}" checked />
+      <span>${field}</span>
+    `;
+    fieldList.appendChild(label);
+  });
+
+  // Update JSON when checkboxes change
+  const checkboxes = fieldList.querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', () => {
+      updateFilteredJson(jsonData, checkboxes, content);
+    });
+  });
+
+  // Handle preset selection
+  presetMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.json-preset-item');
+    if (!item) return;
+
+    const presetValue = item.dataset.value;
+    presetText.textContent = item.textContent;
+    presetMenu.style.display = 'none';
+    presetDropdown.classList.remove('open');
+
+    if (presetValue === '__all__') {
+      checkboxes.forEach(cb => cb.checked = true);
+      updateFilteredJson(jsonData, checkboxes, content);
+    } else {
+      const presets = getPresets();
+      const preset = presets.find(p => p.name === presetValue);
+      if (preset) {
+        checkboxes.forEach(cb => {
+          cb.checked = preset.fields.includes(cb.value);
+        });
+        updateFilteredJson(jsonData, checkboxes, content);
+      }
+    }
+  });
+
+  // Save preset button
+  savePresetBtn.addEventListener('click', () => {
+    const presetName = presetNameInput.value.trim();
+    if (!presetName) {
+      alert('Please enter a preset name');
+      return;
+    }
+
+    const selectedFields = Array.from(checkboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.value);
+
+    if (selectedFields.length === 0) {
+      alert('Please select at least one field');
+      return;
+    }
+
+    savePreset(presetName, selectedFields);
+    loadPresetsIntoMenu(presetMenu);
+    presetNameInput.value = '';
+    alert(`Preset "${presetName}" saved!`);
+  });
+
+  // Initial render
+  updateFilteredJson(jsonData, checkboxes, content);
+}
+
+function extractJsonFields(obj) {
+  let fields = [];
+  for (const key in obj) {
+    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+      fields = fields.concat(extractJsonFields(obj[key]));
+    } else {
+      fields.push(key);
+    }
+  }
+  return fields;
+}
+
+function updateFilteredJson(jsonData, checkboxes, contentElement) {
+  const selectedFields = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
+
+  const filteredData = filterJsonByFields(jsonData, selectedFields);
+  contentElement.textContent = JSON.stringify(filteredData, null, 2);
+}
+
+function filterJsonByFields(obj, fields) {
+  const result = {};
+  fields.forEach(field => {
+    if (field in obj) {
+      result[field] = obj[field];
+    }
+  });
+  return result;
+}
+
+function getPresets() {
+  const presetsJson = localStorage.getItem('jsonPresets');
+  return presetsJson ? JSON.parse(presetsJson) : [];
+}
+
+function savePreset(name, fields) {
+  const presets = getPresets();
+  const existingIndex = presets.findIndex(p => p.name === name);
+
+  if (existingIndex >= 0) {
+    presets[existingIndex].fields = fields;
+  } else {
+    presets.push({ name, fields });
+  }
+
+  localStorage.setItem('jsonPresets', JSON.stringify(presets));
+}
+
+function loadPresetsIntoMenu(menu) {
+  const presets = getPresets();
+
+  menu.innerHTML = '';
+
+  // Add default "All Fields" option
+  const allItem = document.createElement('div');
+  allItem.className = 'json-preset-item';
+  allItem.dataset.value = '__all__';
+  allItem.textContent = 'All Fields';
+  menu.appendChild(allItem);
+
+  // Add separator if there are presets
+  if (presets.length > 0) {
+    const separator = document.createElement('div');
+    separator.className = 'json-preset-separator';
+    menu.appendChild(separator);
+  }
+
+  // Add saved presets
+  presets.forEach(preset => {
+    const item = document.createElement('div');
+    item.className = 'json-preset-item';
+    item.dataset.value = preset.name;
+    item.textContent = preset.name;
+    menu.appendChild(item);
   });
 }
 
