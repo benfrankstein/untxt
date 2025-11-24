@@ -143,8 +143,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('downloadResultBtn')?.addEventListener('click', () => downloadResult(currentTask.id));
   document.getElementById('downloadOriginalBtn')?.addEventListener('click', () => downloadOriginal(currentTask.id));
 
-  // Tab switching
-  initTabs();
+  // Render files list
+  renderFilesList();
   document.getElementById('deleteTaskBtn')?.addEventListener('click', () => deleteTaskFromViewer(currentTask.id));
   document.getElementById('retryBtn')?.addEventListener('click', retryTask);
   document.getElementById('backToListBtn')?.addEventListener('click', showDashboard);
@@ -438,58 +438,11 @@ function updateProcessingStatus(status) {
 }
 
 // ==========================================
-// TAB FUNCTIONALITY
+// FILES LIST RENDERING
 // ==========================================
 
-let currentTab = 'upload'; // 'upload', 'ocr', 'download'
-
-function initTabs() {
-  const tabButtons = document.querySelectorAll('.project-tab');
-
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      const tabName = button.getAttribute('data-tab');
-      switchTab(tabName);
-    });
-  });
-
-  // Initialize with Upload tab active
-  switchTab('upload');
-}
-
-function switchTab(tabName) {
-  currentTab = tabName;
-  console.log('📑 Switching to tab:', tabName);
-
-  // Update tab button states
-  document.querySelectorAll('.project-tab').forEach(btn => {
-    if (btn.getAttribute('data-tab') === tabName) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
-  });
-
-  // Update tab content visibility
-  document.querySelectorAll('.tab-content').forEach(content => {
-    content.classList.remove('active');
-  });
-
-  const activeContent = document.getElementById(`${tabName}TabContent`);
-  if (activeContent) {
-    activeContent.classList.add('active');
-  }
-
-  // Render appropriate content for each tab
-  if (tabName === 'upload') {
-    renderUploadTab();
-  } else if (tabName === 'download') {
-    renderDownloadTab();
-  }
-}
-
-function renderUploadTab() {
-  const grid = document.getElementById('documentGridUpload');
+function renderFilesList() {
+  const grid = document.getElementById('documentGrid');
 
   // Mock file data
   const mockFiles = [
@@ -501,18 +454,6 @@ function renderUploadTab() {
   ];
 
   grid.innerHTML = `
-    <div class="upload-zone">
-      <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
-      <label for="fileInput" class="upload-zone-label">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="17 8 12 3 7 8"></polyline>
-          <line x1="12" y1="3" x2="12" y2="15"></line>
-        </svg>
-        <span>Drop files here or click to browse</span>
-      </label>
-    </div>
-
     <div class="files-list-container">
       <table class="files-table">
         <thead>
@@ -521,38 +462,60 @@ function renderUploadTab() {
               <input type="checkbox" id="selectAllFiles" class="file-checkbox">
             </th>
             <th class="sortable">Name</th>
-            <th class="sortable">Size</th>
             <th class="sortable"># of Pages</th>
-            <th class="sortable">Date</th>
+            <th class="format-col">
+              <input type="checkbox" id="selectAllHtml" class="format-header-checkbox" checked>
+              <label for="selectAllHtml">.html</label>
+            </th>
+            <th class="format-col">
+              <input type="checkbox" id="selectAllTxt" class="format-header-checkbox" checked>
+              <label for="selectAllTxt">.txt</label>
+            </th>
+            <th class="format-col">
+              <input type="checkbox" id="selectAllJson" class="format-header-checkbox" checked>
+              <label for="selectAllJson">.json</label>
+            </th>
             <th class="sortable">Status</th>
             <th>Action</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           ${mockFiles.map(file => {
             const isCompleted = file.status === 'Completed';
             const isProcessing = file.status === 'Processing';
-            const buttonDisabled = isCompleted || isProcessing;
-            const buttonClass = buttonDisabled ? 'btn-ocr-disabled' : 'btn-ocr';
+            const isReady = file.status === 'Ready';
 
             // Render status cell differently for processing files
             let statusCell;
             if (isProcessing) {
               statusCell = `
                 <div class="progress-info">
-                  <div class="debug-line" style="background: red; height: 1px;"></div>
                   <div class="progress-percentage">${file.progress}%</div>
-                  <div class="debug-line" style="background: blue; height: 1px;"></div>
                   <div class="progress-bar">
                     <div class="progress-bar-fill" style="width: ${file.progress}%"></div>
                   </div>
-                  <div class="debug-line" style="background: green; height: 1px;"></div>
                   <div class="progress-eta">${file.eta} remaining</div>
-                  <div class="debug-line" style="background: yellow; height: 1px;"></div>
                 </div>
               `;
             } else {
               statusCell = `<span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>`;
+            }
+
+            // Action button based on status
+            let actionButton = '';
+            if (isReady) {
+              actionButton = `<button class="btn-ocr">OCR</button>`;
+            } else if (isCompleted) {
+              actionButton = `
+                <button class="btn-view">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  View
+                </button>
+              `;
             }
 
             return `
@@ -567,14 +530,54 @@ function renderUploadTab() {
                   </svg>
                   ${file.name}
                 </td>
-                <td class="file-size">${file.size}</td>
                 <td class="file-pages">${file.pages}</td>
-                <td class="file-date">${file.date}</td>
+                <td class="format-col">
+                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="html" checked>
+                </td>
+                <td class="format-col">
+                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="txt" checked>
+                </td>
+                <td class="format-col">
+                  <input type="checkbox" class="format-checkbox" data-file="${file.name}" data-format="json" checked>
+                </td>
                 <td class="file-status">
                   ${statusCell}
                 </td>
                 <td class="file-action">
-                  <button class="${buttonClass}" ${buttonDisabled ? 'disabled' : ''}>OCR</button>
+                  ${actionButton}
+                </td>
+                <td class="file-menu-cell">
+                  <button class="file-menu-btn" data-file="${file.name}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="12" r="2"></circle>
+                      <circle cx="5" cy="12" r="2"></circle>
+                      <circle cx="19" cy="12" r="2"></circle>
+                    </svg>
+                  </button>
+                  <div class="file-context-menu" data-file="${file.name}">
+                    <button class="context-menu-item" data-action="rename">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                      </svg>
+                      <span>Rename</span>
+                    </button>
+                    <button class="context-menu-item" data-action="download">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      <span>Download original</span>
+                    </button>
+                    <button class="context-menu-item context-menu-item-danger" data-action="delete">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                      <span>Delete</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             `;
@@ -594,41 +597,95 @@ function renderUploadTab() {
       });
     });
   }
-}
 
-function renderDownloadTab() {
-  const grid = document.getElementById('documentGridDownload');
+  // Setup format column header checkboxes (toggle all files for that format)
+  const selectAllHtml = document.getElementById('selectAllHtml');
+  const selectAllTxt = document.getElementById('selectAllTxt');
+  const selectAllJson = document.getElementById('selectAllJson');
 
-  // Filter completed tasks
-  let completedTasks = tasks.filter(task => task.status === 'completed');
-
-  if (currentFolderId !== 'all') {
-    completedTasks = completedTasks.filter(task => task.folder_id === currentFolderId);
-  }
-
-  if (completedTasks.length === 0) {
-    grid.innerHTML = `
-      <div class="empty-state">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="7 10 12 15 17 10"></polyline>
-          <line x1="12" y1="15" x2="12" y2="3"></line>
-        </svg>
-        <p>No completed documents yet</p>
-        <small>Completed documents will appear here</small>
-      </div>
-    `;
-  } else {
-    grid.innerHTML = completedTasks.map(task => createDocumentCard(task)).join('');
-
-    // Add click handlers
-    completedTasks.forEach(task => {
-      const card = document.querySelector(`#documentGridDownload [data-task-id="${task.id}"]`);
-      if (card) {
-        card.addEventListener('click', () => showViewer(task));
-      }
+  if (selectAllHtml) {
+    selectAllHtml.addEventListener('change', (e) => {
+      const htmlCheckboxes = document.querySelectorAll('.format-checkbox[data-format="html"]');
+      htmlCheckboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
     });
   }
+
+  if (selectAllTxt) {
+    selectAllTxt.addEventListener('change', (e) => {
+      const txtCheckboxes = document.querySelectorAll('.format-checkbox[data-format="txt"]');
+      txtCheckboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
+    });
+  }
+
+  if (selectAllJson) {
+    selectAllJson.addEventListener('change', (e) => {
+      const jsonCheckboxes = document.querySelectorAll('.format-checkbox[data-format="json"]');
+      jsonCheckboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
+    });
+  }
+
+  // Setup file context menu functionality
+  const menuButtons = document.querySelectorAll('.file-menu-btn');
+  const contextMenus = document.querySelectorAll('.file-context-menu');
+
+  menuButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fileName = button.dataset.file;
+      const menu = document.querySelector(`.file-context-menu[data-file="${fileName}"]`);
+
+      // Close all other menus
+      contextMenus.forEach(m => {
+        if (m !== menu) m.classList.remove('show');
+      });
+
+      // Toggle this menu
+      menu.classList.toggle('show');
+    });
+  });
+
+  // Close menus when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.file-menu-cell')) {
+      contextMenus.forEach(menu => menu.classList.remove('show'));
+    }
+  });
+
+  // Handle context menu actions
+  const menuItems = document.querySelectorAll('.context-menu-item');
+  menuItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      const fileName = item.closest('.file-context-menu').dataset.file;
+
+      // Close menu
+      item.closest('.file-context-menu').classList.remove('show');
+
+      // Handle action
+      if (action === 'rename') {
+        const newName = prompt('Enter new file name:', fileName);
+        if (newName && newName !== fileName) {
+          console.log(`Rename: ${fileName} → ${newName}`);
+          // TODO: Implement rename API call
+        }
+      } else if (action === 'download') {
+        console.log(`Download original: ${fileName}`);
+        // TODO: Implement download original API call
+      } else if (action === 'delete') {
+        if (confirm(`Delete "${fileName}"?`)) {
+          console.log(`Delete: ${fileName}`);
+          // TODO: Implement delete API call
+        }
+      }
+    });
+  });
 }
 
 // ==========================================
@@ -2703,14 +2760,3 @@ function showSaveStatus(status) {
 // All changes are saved to database every 3 seconds
 // Backend handles S3 upload on session end
 // No localStorage needed - database is source of truth
-
-// =====================================================
-// DEBUG: Toggle debug lines with 'b' key
-// =====================================================
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'b' || e.key === 'B') {
-    document.querySelectorAll('.debug-line').forEach(line => {
-      line.style.display = line.style.display === 'none' ? 'block' : 'none';
-    });
-  }
-});

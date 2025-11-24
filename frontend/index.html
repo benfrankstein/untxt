@@ -6,7 +6,7 @@
   <title>UNTXT - Document OCR</title>
   <link rel="stylesheet" href="base.css?v=13">
   <link rel="stylesheet" href="sidebar-nav.css?v=31">
-  <link rel="stylesheet" href="style.css?v=51">
+  <link rel="stylesheet" href="style.css?v=60">
 </head>
 <body>
 
@@ -205,48 +205,24 @@
       <section class="recent-section">
         <div class="project-header">
           <h2 id="projectNameHeader">TESTPROJECT</h2>
-          <div class="project-tabs">
-            <button class="project-tab active" data-tab="upload" id="tabUpload">
-              Files
-            </button>
-            <button class="project-tab" data-tab="download" id="tabDownload">
-              Download
-            </button>
-          </div>
         </div>
 
-        <!-- Notification Toggle -->
-        <div class="notification-toggle-container">
-          <label class="notification-toggle-label">
-            <span class="notification-toggle-text">Notify me on completion</span>
-            <div class="toggle-switch">
-              <input type="checkbox" id="notifyToggle" class="toggle-input">
-              <span class="toggle-slider"></span>
-            </div>
+        <!-- Upload Zone -->
+        <div class="upload-zone">
+          <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+          <label for="fileInput" class="upload-zone-label">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Drop files here or click to browse</span>
           </label>
         </div>
 
-        <!-- Tab Content: Files -->
-        <div class="tab-content active" id="uploadTabContent">
-          <div class="document-grid" id="documentGridUpload">
-            <!-- Upload interface will be shown here -->
-          </div>
-        </div>
-
-        <!-- Tab Content: Download -->
-        <div class="tab-content" id="downloadTabContent">
-          <div class="document-grid" id="documentGridDownload">
-            <!-- Download interface will be shown here -->
-            <div class="empty-state">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <p>Download completed documents</p>
-              <small>Completed documents will appear here</small>
-            </div>
-          </div>
+        <!-- Files List -->
+        <div class="document-grid" id="documentGrid">
+          <!-- Files table will be shown here -->
         </div>
       </section>
 
@@ -472,7 +448,7 @@
 
   <script src="https://js.stripe.com/v3/"></script>
   <script src="sidebar-nav.js?v=15"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=26"></script>
   <script src="credits.js"></script>
   <script>
     // Initialize sidebar navigation
