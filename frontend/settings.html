@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - UNTXT</title>
+  <link rel="stylesheet" href="base.css?v=13">
+  <link rel="stylesheet" href="sidebar-nav.css?v=31">
+  <link rel="stylesheet" href="settings.css?v=29">
+</head>
+<body>
+
+  <!-- Universal Sidebar Navigation -->
+  <aside class="sidebar-nav" id="sidebarNav">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-content">
+        <img src="logo.png" alt="UNTXT" class="sidebar-logo-img">
+      </div>
+      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 18l-6-6 6-6"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav class="sidebar-main-nav">
+      <!-- Projects Section -->
+      <div class="sidebar-projects">
+        <!-- Projects Header (collapsible) -->
+        <button class="projects-header" id="projectsHeader">
+          <span class="projects-header-text">Projects</span>
+          <svg class="projects-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6"></path>
+          </svg>
+        </button>
+
+        <!-- Projects List (collapsible) -->
+        <div class="projects-list" id="projectsList">
+          <!-- New Project Button -->
+          <button class="project-item project-new" id="newProjectBtn">
+            <svg class="project-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <path d="M12 11v6M9 14h6"></path>
+            </svg>
+            <span class="project-name">New Project</span>
+          </button>
+
+          <!-- Projects will be loaded dynamically by sidebar-nav.js -->
+        </div>
+      </div>
+    </nav>
+
+    <div class="sidebar-credits">
+      <div class="sidebar-credits-info">
+        <svg class="sidebar-credits-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+        <div class="sidebar-credits-details">
+          <span class="sidebar-credits-label">Credits</span>
+          <span class="sidebar-credits-balance" id="sidebarCreditsBalance">--</span>
+        </div>
+      </div>
+      <button class="sidebar-credits-buy" id="sidebarBuyCreditsBtn" title="Buy more credits">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar-bottom">
+      <!-- User Dropdown Menu -->
+      <div class="sidebar-user-dropdown" id="sidebarUserDropdown">
+        <!-- User Info Header -->
+        <div class="dropdown-user-header">
+          <div class="dropdown-user-avatar" id="dropdownUserAvatar">U</div>
+          <div class="dropdown-user-info">
+            <div class="dropdown-user-name" id="dropdownUserName">Loading...</div>
+            <div class="dropdown-user-email" id="dropdownEmail">user@example.com</div>
+          </div>
+        </div>
+        <div class="dropdown-divider"></div>
+
+        <a href="settings.html" class="dropdown-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span>Account Settings</span>
+        </a>
+
+        <button class="dropdown-item" id="dropdownCreditsBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 6v6l4 2"></path>
+          </svg>
+          <span>Credits: <strong id="dropdownCreditsBalance">--</strong></span>
+        </button>
+
+        <div class="dropdown-divider"></div>
+
+        <button class="dropdown-item dropdown-item-danger" id="dropdownLogoutBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Log out</span>
+        </button>
+      </div>
+
+      <!-- User Trigger Button -->
+      <button class="sidebar-user" id="sidebarUserTrigger">
+        <div class="sidebar-user-avatar" id="sidebarUserAvatar">U</div>
+        <div class="sidebar-user-details">
+          <span class="sidebar-user-name" id="sidebarUserName">Loading...</span>
+          <span class="sidebar-user-plan" id="sidebarUserPlan">Free</span>
+        </div>
+        <svg class="sidebar-user-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 9l6 6 6-6"></path>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main App Wrapper -->
+  <div class="app-wrapper">
+    <div class="settings-container">
+
+      <!-- Settings Header -->
+      <div class="settings-header">
+        <h1>Settings</h1>
+      </div>
+
+      <!-- Settings Layout -->
+      <div class="settings-layout">
+
+        <!-- Left Navigation -->
+        <aside class="settings-sidebar">
+          <nav class="settings-nav">
+            <button class="settings-nav-item active" data-section="account">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <span>General</span>
+            </button>
+            <button class="settings-nav-item" data-section="credits">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
+              </svg>
+              <span>Credits</span>
+            </button>
+            <button class="settings-nav-item" data-section="billing">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                <line x1="2" y1="10" x2="22" y2="10"></line>
+              </svg>
+              <span>Billing</span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Right Content -->
+        <main class="settings-content">
+
+          <!-- Account Section -->
+          <section class="settings-section active" id="accountSection">
+
+            <!-- Profile Card -->
+            <div class="settings-card">
+              <h2>Profile</h2>
+
+              <div class="field-grid">
+                <div class="field-item field-item-fullname">
+                  <label>Full Name</label>
+                  <div class="field-value-with-avatar">
+                    <div class="profile-avatar-inline" id="profileAvatar">U</div>
+                    <div class="field-value" id="profileName">Loading...</div>
+                  </div>
+                </div>
+                <div class="field-item">
+                  <label>Username</label>
+                  <div class="field-value" id="username">-</div>
+                </div>
+                <div class="field-item">
+                  <label>Email</label>
+                  <div class="field-value" id="profileEmail">user@example.com</div>
+                </div>
+                <div class="field-item">
+                  <label>Phone Number</label>
+                  <div class="field-value" id="phoneNumber">-</div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- Credits Section -->
+          <section class="settings-section" id="creditsSection">
+
+            <!-- Current Balance Card -->
+            <div class="settings-card">
+              <h2>Current Balance</h2>
+              <div class="credits-balance-display">
+                <div class="credits-balance-amount" id="settingsCreditsBalance">--</div>
+                <p class="credits-balance-label">credits available</p>
+              </div>
+            </div>
+
+            <!-- Purchase Credits Card -->
+            <div class="settings-card">
+              <h2>Purchase Credits</h2>
+              <p class="help-text">
+                Credits are used to process your documents. <strong>1 credit = 1 page processed.</strong>
+                Credits never expire and are non-refundable once spent.
+              </p>
+
+              <div class="credits-purchase-form">
+                <label class="form-label">Select Amount</label>
+                <div class="amount-selection" id="amountSelection">
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="1" data-price="5">
+                    <span class="amount-label">$5</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="2" data-price="10">
+                    <span class="amount-label">$10</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="3" data-price="25" checked>
+                    <span class="amount-label">$25</span>
+                  </label>
+                  <label class="amount-option">
+                    <input type="radio" name="creditAmount" value="4" data-price="50">
+                    <span class="amount-label">$50</span>
+                  </label>
+                  <label class="amount-option amount-option-other">
+                    <input type="radio" name="creditAmount" value="other" data-price="0">
+                    <span class="amount-label">
+                      Other
+                      <input type="number"
+                             id="customAmountInput"
+                             class="custom-amount-input"
+                             placeholder="$5"
+                             min="5"
+                             step="1">
+                    </span>
+                  </label>
+                </div>
+
+                <div class="credits-amount-display" id="creditsAmountDisplay">
+                  <span class="credits-count">208</span> credits
+                </div>
+
+                <button class="btn-purchase-credits" id="purchaseCreditsBtn">
+                  Purchase Credits
+                </button>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- Billing Section -->
+          <section class="settings-section" id="billingSection">
+
+            <!-- Plan Card -->
+            <div class="settings-card">
+              <div class="billing-plan">
+                <div class="billing-plan-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
+                  </svg>
+                </div>
+                <div class="billing-plan-info">
+                  <h3 class="billing-plan-name">Pro Plan</h3>
+                  <p class="billing-plan-frequency">Monthly</p>
+                  <p class="billing-plan-renewal">Your subscription renews automatically on <span id="renewalDate">--</span>.</p>
+                </div>
+                <button class="btn-secondary" id="changePlanBtn">Change Plan</button>
+              </div>
+            </div>
+
+            <!-- Payment Method Card -->
+            <div class="settings-card">
+              <h2>Payment</h2>
+              <div class="billing-payment">
+                <div class="billing-payment-method">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                    <line x1="1" y1="10" x2="23" y2="10"></line>
+                  </svg>
+                  <span>Link by Stripe</span>
+                </div>
+                <button class="btn-secondary" id="updatePaymentBtn">Update</button>
+              </div>
+            </div>
+
+            <!-- Invoices Card -->
+            <div class="settings-card">
+              <h2>Invoices</h2>
+              <div class="billing-invoices">
+                <table class="invoices-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invoicesTableBody">
+                    <tr>
+                      <td colspan="4" class="no-invoices">No invoices available</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Cancellation Card -->
+            <div class="settings-card">
+              <h2>Cancellation</h2>
+              <div class="billing-cancellation">
+                <p class="help-text">Cancel your subscription</p>
+                <button class="btn-danger" id="cancelSubscriptionBtn">Cancel</button>
+              </div>
+            </div>
+
+          </section>
+
+        </main>
+
+      </div>
+
+    </div>
+  </div>
+
+  <script src="sidebar-nav.js?v=15"></script>
+  <script src="settings.js?v=6"></script>
+</body>
+</html>

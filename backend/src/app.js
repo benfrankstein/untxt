@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
+const passport = require('./config/passport');
 const config = require('./config');
 
 // Services
@@ -8,13 +9,15 @@ const redisService = require('./services/redis.service');
 const dbService = require('./services/db.service');
 const websocketService = require('./services/websocket.service');
 const s3Service = require('./services/s3.service');
+const workerPoolService = require('./services/worker-pool.service');
 
 // Routes
 const tasksRoutes = require('./routes/tasks.routes');
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
-const versionsRoutes = require('./routes/versions.routes');
-const sessionsRoutes = require('./routes/sessions.routes');
+// REMOVED: Document editing routes (not needed)
+// const versionsRoutes = require('./routes/versions.routes');
+// const sessionsRoutes = require('./routes/sessions.routes');
 const foldersRoutes = require('./routes/folders.routes');
 const creditsRoutes = require('./routes/credits.routes');
 
@@ -42,6 +45,9 @@ app.use(session({
     sameSite: 'lax' // CSRF protection
   }
 }));
+
+// Initialize Passport for OAuth
+app.use(passport.initialize());
 
 // Request logging
 app.use((req, res, next) => {
@@ -85,8 +91,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/folders', foldersRoutes); // Project folder organization
 app.use('/api/admin', adminRoutes); // Access control & revocation endpoints
-app.use('/api/versions', versionsRoutes); // Document versioning & editing
-app.use('/api/sessions', sessionsRoutes); // Google Docs flow - edit sessions
+// REMOVED: Document editing features (not needed)
+// app.use('/api/versions', versionsRoutes); // Document versioning & editing
+// app.use('/api/sessions', sessionsRoutes); // Google Docs flow - edit sessions
 app.use('/api/credits', creditsRoutes); // Credits system & payment processing
 
 // 404 handler
@@ -159,6 +166,16 @@ async function initializeServices() {
     });
     console.log('✓ Subscribed to Redis task updates channel');
 
+    // Start worker pool (spawns Python workers)
+    try {
+      await workerPoolService.start();
+      console.log('✓ Worker pool started');
+    } catch (error) {
+      console.error('Failed to start worker pool:', error);
+      console.error('  The backend will continue running, but OCR processing will not work.');
+      console.error('  To fix: Ensure Python venv is set up and model is downloaded.');
+    }
+
     // Subscribe to Redis Pub/Sub for database changes (direct modifications)
     await redisService.subscribe('ocr:db:changes', async (message) => {
       console.log(`[DB CHANGE] ${message.data.operation} on ${message.data.table} - User: ${message.data.user_id}`);
@@ -228,6 +245,10 @@ async function shutdown() {
   console.log('\nShutting down gracefully...');
 
   try {
+    // Stop worker pool first (give workers time to finish current tasks)
+    await workerPoolService.stop();
+    console.log('✓ Worker pool stopped');
+
     websocketService.close();
     console.log('✓ WebSocket server closed');
 

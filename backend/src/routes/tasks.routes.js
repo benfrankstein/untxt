@@ -69,14 +69,17 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     console.log(`Processing upload - File: ${fileId}, Task: ${taskId}, User: ${userId}`);
 
-    // Generate S3 key
+    // Process BOTH formats (HTML + JSON) for every page
+    console.log(`Processing mode: DUAL (HTML + JSON)`);
+
+    // Generate S3 key for original PDF
     const s3Key = s3Service.generateUploadKey(userId, fileId, req.file.originalname);
 
     // Calculate file hash
     const fileHash = s3Service.calculateFileHash(req.file.buffer);
 
-    // Upload to S3
-    console.log(`Uploading to S3: ${s3Key}`);
+    // Upload original PDF to S3
+    console.log(`Uploading original PDF to S3: ${s3Key}`);
     await s3Service.uploadFile(
       req.file.buffer,
       s3Key,
@@ -88,6 +91,51 @@ router.post('/', upload.single('file'), async (req, res) => {
       }
     );
 
+    // Split PDF into pages if it's a PDF file
+    let pageBuffers = [];
+    let pageCount = 1;
+
+    if (req.file.mimetype === 'application/pdf') {
+      try {
+        console.log(`Splitting PDF into pages...`);
+        pageBuffers = await pdfService.splitPdfIntoPages(req.file.buffer, { dpi: 300 });
+        pageCount = pageBuffers.length;
+        console.log(`✓ Split into ${pageCount} page(s)`);
+      } catch (splitError) {
+        console.error('Failed to split PDF:', splitError);
+        // Fallback: treat as single page
+        pageBuffers = [req.file.buffer];
+        pageCount = 1;
+      }
+    } else {
+      // For non-PDF files (images), treat as single page
+      pageBuffers = [req.file.buffer];
+      pageCount = 1;
+    }
+
+    // Upload each page image to S3
+    const pageS3Keys = [];
+    for (let i = 0; i < pageCount; i++) {
+      const pageNumber = i + 1;
+      const pageS3Key = `uploads/${userId}/${fileId}/pages/page_${pageNumber}.jpg`;
+
+      console.log(`Uploading page ${pageNumber} to S3: ${pageS3Key}`);
+      await s3Service.uploadFile(
+        pageBuffers[i],
+        pageS3Key,
+        'image/jpeg',
+        {
+          'user-id': userId,
+          'file-id': fileId,
+          'task-id': taskId,
+          'page-number': pageNumber.toString(),
+          'total-pages': pageCount.toString(),
+        }
+      );
+
+      pageS3Keys.push(pageS3Key);
+    }
+
     // Create file record in database
     console.log(`Creating file record in database: ${fileId}`);
     const fileRecord = await dbService.createFile({
@@ -98,6 +146,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       fileSize: req.file.size,
       s3Key,
       fileHash,
+      pageCount: pageCount,
     });
 
     // Create task record in database
@@ -107,41 +156,103 @@ router.post('/', upload.single('file'), async (req, res) => {
       fileId,
       userId,
       priority: parseInt(req.body.priority) || 5,
+      pageCount: pageCount,
     });
 
-    // CREDITS DEDUCTION: Deduct credits after task is created
+    // Create task_pages records in database (for HIPAA compliance & page tracking)
+    // Create TWO records per page: one for HTML, one for JSON
+    const totalTaskPages = pageCount * 2; // HTML + JSON per page
+    console.log(`Creating ${totalTaskPages} task_pages record(s) in database (${pageCount} pages × 2 formats)...`);
+    const taskPagesData = [];
+    for (let i = 0; i < pageCount; i++) {
+      const pageNum = i + 1;
+
+      // HTML task_page record
+      taskPagesData.push({
+        taskId: taskId,
+        pageNumber: pageNum,
+        totalPages: pageCount,
+        pageImageS3Key: pageS3Keys[i],
+        formatType: 'html',
+      });
+
+      // JSON task_page record
+      taskPagesData.push({
+        taskId: taskId,
+        pageNumber: pageNum,
+        totalPages: pageCount,
+        pageImageS3Key: pageS3Keys[i],
+        formatType: 'json',
+      });
+    }
+
+    const taskPagesRecords = await dbService.createTaskPages(taskPagesData);
+    console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (${pageCount} HTML + ${pageCount} JSON)`);
+
+    // CREDITS DEDUCTION: Deduct credits per page after task is created
+    const creditsPerPage = pageCount; // 1 credit per page
     let creditDeduction;
     try {
       creditDeduction = await creditsService.deductCredits(
         userId,
-        requiredCredits,
+        creditsPerPage,
         taskId,
-        `Page upload: ${req.file.originalname}`,
+        `PDF processing: ${req.file.originalname} (${pageCount} page${pageCount > 1 ? 's' : ''})`,
         {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
           fileName: req.file.originalname,
-          fileSize: req.file.size
+          fileSize: req.file.size,
+          pageCount: pageCount
         }
       );
-      console.log(`✓ Deducted ${requiredCredits} credit(s) from user ${userId}. New balance: ${creditDeduction.newBalance}`);
+      console.log(`✓ Deducted ${creditsPerPage} credit(s) from user ${userId} for ${pageCount} page(s). New balance: ${creditDeduction.newBalance}`);
     } catch (deductError) {
       console.error(`❌ Failed to deduct credits for task ${taskId}:`, deductError);
       // Task was created but credits weren't deducted
       // This shouldn't happen if validation passed, but log for manual reconciliation
     }
 
-    // Enqueue task to Redis
-    console.log(`Enqueuing task to Redis: ${taskId}`);
-    await redisService.enqueueTask({
-      task_id: taskId,
-      file_id: fileId,
-      user_id: userId,
-      s3_key: s3Key,
-      filename: req.file.originalname,
-      mime_type: req.file.mimetype,
-      priority: taskRecord.priority,
-    });
+    // Enqueue page tasks to Redis (TWO tasks per page: HTML + JSON)
+    const totalRedisTasks = pageCount * 2;
+    console.log(`Enqueuing ${totalRedisTasks} task(s) to Redis (${pageCount} pages × 2 formats)...`);
+    for (let i = 0; i < pageCount; i++) {
+      const pageNumber = i + 1;
+
+      // Enqueue HTML task
+      const htmlTaskId = `${taskId}_page_${pageNumber}_html`;
+      await redisService.enqueueTask({
+        task_id: htmlTaskId,
+        parent_task_id: taskId,
+        file_id: fileId,
+        user_id: userId,
+        page_number: pageNumber,
+        total_pages: pageCount,
+        page_image_s3_key: pageS3Keys[i],
+        format_type: 'html',
+        filename: req.file.originalname,
+        mime_type: req.file.mimetype,
+        priority: taskRecord.priority,
+      });
+      console.log(`  → Enqueued HTML: page ${pageNumber}/${pageCount}`);
+
+      // Enqueue JSON task
+      const jsonTaskId = `${taskId}_page_${pageNumber}_json`;
+      await redisService.enqueueTask({
+        task_id: jsonTaskId,
+        parent_task_id: taskId,
+        file_id: fileId,
+        user_id: userId,
+        page_number: pageNumber,
+        total_pages: pageCount,
+        page_image_s3_key: pageS3Keys[i],
+        format_type: 'json',
+        filename: req.file.originalname,
+        mime_type: req.file.mimetype,
+        priority: taskRecord.priority,
+      });
+      console.log(`  → Enqueued JSON: page ${pageNumber}/${pageCount}`);
+    }
 
     // Get queue stats
     const queueStats = await redisService.getQueueStats();
@@ -168,10 +279,14 @@ router.post('/', upload.single('file'), async (req, res) => {
         s3Key,
         fileHash,
         status: taskRecord.status,
+        pageCount: pageCount,
+        processingMode: 'dual', // Both HTML and JSON
+        formats: ['html', 'json'],
+        totalProcessingTasks: pageCount * 2, // HTML + JSON per page
         queuePosition: queueStats.queued,
         createdAt: taskRecord.created_at,
         // Credits info
-        creditsDeducted: requiredCredits,
+        creditsDeducted: creditsPerPage,
         creditsRemaining: creditDeduction?.newBalance || null,
       },
     });
@@ -329,7 +444,7 @@ router.get('/:taskId/preview', async (req, res) => {
       });
     }
 
-    // 5. Download HTML from S3
+    // 5. Download HTML from S3 (already includes positioning and page container)
     const fileData = await s3Service.streamFileDownload(task.s3_result_key);
 
     // Read the HTML content from stream
@@ -339,7 +454,7 @@ router.get('/:taskId/preview', async (req, res) => {
     }
     const htmlContent = Buffer.concat(chunks).toString('utf-8');
 
-    // 6. Return HTML directly (no PDF conversion for preview)
+    // 6. Return HTML directly (worker already did positioning reconstruction)
     res.set({
       'Content-Type': 'text/html; charset=utf-8',
       'X-Task-Id': taskId,
@@ -368,6 +483,217 @@ router.get('/:taskId/preview', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch task preview',
+    });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/txt
+ * Get plain text extraction from HTML result
+ */
+router.get('/:taskId/txt', async (req, res) => {
+  const startTime = Date.now();
+  const userId = req.body.userId || req.headers['x-user-id'];
+  const { taskId } = req.params;
+
+  try {
+    // 1. Get task details
+    const task = await dbService.getTaskById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
+    // 2. Verify ownership
+    if (task.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this task',
+      });
+    }
+
+    // 3. Check access control
+    const accessCheck = await dbService.checkUserFileAccess(userId, taskId);
+
+    if (!accessCheck.hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access to this file has been revoked',
+        reason: accessCheck.denialReason,
+      });
+    }
+
+    // 4. Verify task is completed
+    if (task.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Task is not completed yet',
+        status: task.status,
+      });
+    }
+
+    // 5. Query task_pages for TXT format result
+    const txtPage = await dbService.getTaskPageByFormat(taskId, 'txt', 1);
+
+    if (!txtPage || !txtPage.result_s3_key) {
+      return res.status(404).json({
+        success: false,
+        error: 'Text result not available for this task',
+      });
+    }
+
+    // 6. Download TXT from S3
+    const fileData = await s3Service.streamFileDownload(txtPage.result_s3_key);
+
+    // Read the text content from stream
+    const chunks = [];
+    for await (const chunk of fileData.stream) {
+      chunks.push(chunk);
+    }
+    const plainText = Buffer.concat(chunks).toString('utf-8');
+
+    // 7. Return plain text
+    res.set({
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Task-Id': taskId,
+      'X-File-Access-Controlled': 'true',
+      'Cache-Control': 'no-cache'
+    });
+    res.send(plainText);
+
+    // Log access
+    await dbService.logFileAccess({
+      userId,
+      username: req.user?.username || task.username,
+      taskId,
+      fileId: task.file_id,
+      s3Key: txtPage.result_s3_key,
+      filename: task.filename,
+      accessResult: 'allowed',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      downloadDurationMs: Date.now() - startTime,
+      metadata: { accessType: 'text' }
+    });
+
+  } catch (error) {
+    console.error('Error fetching task text:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch task text',
+    });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/json
+ * Get JSON extraction result
+ */
+router.get('/:taskId/json', async (req, res) => {
+  const startTime = Date.now();
+  const userId = req.body.userId || req.headers['x-user-id'];
+  const { taskId } = req.params;
+
+  try {
+    // 1. Get task details
+    const task = await dbService.getTaskById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
+    // 2. Verify ownership
+    if (task.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this task',
+      });
+    }
+
+    // 3. Check access control
+    const accessCheck = await dbService.checkUserFileAccess(userId, taskId);
+
+    if (!accessCheck.hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access to this file has been revoked',
+        reason: accessCheck.denialReason,
+      });
+    }
+
+    // 4. Verify task is completed
+    if (task.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Task is not completed yet',
+        status: task.status,
+      });
+    }
+
+    // 5. Query task_pages for JSON format result
+    const jsonPage = await dbService.getTaskPageByFormat(taskId, 'json', 1);
+
+    if (!jsonPage || !jsonPage.result_s3_key) {
+      return res.status(404).json({
+        success: false,
+        error: 'JSON result not available for this task',
+      });
+    }
+
+    try {
+      const fileData = await s3Service.streamFileDownload(jsonPage.result_s3_key);
+
+      // Read the JSON content from stream
+      const chunks = [];
+      for await (const chunk of fileData.stream) {
+        chunks.push(chunk);
+      }
+      const jsonContent = Buffer.concat(chunks).toString('utf-8');
+      const jsonData = JSON.parse(jsonContent);
+
+      // 6. Return JSON data
+      res.set({
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-Task-Id': taskId,
+        'X-File-Access-Controlled': 'true',
+        'Cache-Control': 'no-cache'
+      });
+      res.json(jsonData);
+
+      // Log access
+      await dbService.logFileAccess({
+        userId,
+        username: req.user?.username || task.username,
+        taskId,
+        fileId: task.file_id,
+        s3Key: jsonPage.result_s3_key,
+        filename: task.filename,
+        accessResult: 'allowed',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        downloadDurationMs: Date.now() - startTime,
+        metadata: { accessType: 'json' }
+      });
+
+    } catch (jsonError) {
+      console.error('Error downloading JSON from S3:', jsonError);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to download JSON result',
+      });
+    }
+
+  } catch (error) {
+    console.error('Error fetching task JSON:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch task JSON',
     });
   }
 });
@@ -561,6 +887,127 @@ router.get('/:taskId/result', async (req, res) => {
         message: error.message,
       });
     }
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/txt
+ * Get extracted text content (HIPAA-compliant)
+ */
+/**
+ * GET /api/tasks/:taskId/json
+ * Get structured JSON data (HIPAA-compliant)
+ */
+router.get('/:taskId/json', async (req, res) => {
+  const startTime = Date.now();
+  const userId = req.body.userId || req.headers['x-user-id'];
+  const { taskId } = req.params;
+
+  try {
+    // 1. Get task details
+    const task = await dbService.getTaskById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
+    // 2. Verify ownership
+    if (task.user_id !== userId) {
+      await dbService.logFileAccess({
+        userId,
+        username: 'unknown',
+        taskId,
+        fileId: task.file_id,
+        s3Key: 'json-access',
+        filename: task.filename,
+        accessResult: 'denied',
+        accessDeniedReason: 'User does not own this task',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this task',
+      });
+    }
+
+    // 3. Check access control
+    const accessCheck = await dbService.checkUserFileAccess(userId, taskId);
+
+    if (!accessCheck.hasAccess) {
+      await dbService.logFileAccess({
+        userId,
+        username: req.user?.username || task.username,
+        taskId,
+        fileId: task.file_id,
+        s3Key: 'json-access',
+        filename: task.filename,
+        accessResult: 'denied',
+        accessDeniedReason: accessCheck.denialReason,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      return res.status(403).json({
+        success: false,
+        error: 'Access to this file has been revoked',
+        reason: accessCheck.denialReason,
+      });
+    }
+
+    // 4. Verify task is completed
+    if (task.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Task is not completed yet',
+        status: task.status,
+      });
+    }
+
+    if (!task.structured_data) {
+      return res.status(404).json({
+        success: false,
+        error: 'Structured data not found',
+      });
+    }
+
+    // 5. Return structured data as JSON
+    const baseFilename = task.filename.replace(/\.[^/.]+$/, '');
+
+    res.set({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${baseFilename}_data.json"`,
+      'X-Task-Id': taskId,
+      'X-File-Access-Controlled': 'true',
+    });
+    res.json(task.structured_data);
+
+    // 6. Log successful access
+    await dbService.logFileAccess({
+      userId,
+      username: req.user?.username || task.username,
+      taskId,
+      fileId: task.file_id,
+      s3Key: 'json-access',
+      filename: task.filename,
+      accessResult: 'allowed',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      downloadDurationMs: Date.now() - startTime,
+      metadata: { format: 'json' }
+    });
+
+  } catch (error) {
+    console.error('Error retrieving structured data:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve structured data',
+      message: error.message,
+    });
   }
 });
 

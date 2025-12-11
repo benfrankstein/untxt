@@ -4,43 +4,128 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>UNTXT - Document OCR</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="base.css?v=13">
+  <link rel="stylesheet" href="sidebar-nav.css?v=31">
+  <link rel="stylesheet" href="style.css?v=94">
 </head>
 <body>
 
-  <!-- HEADER -->
-  <header class="app-header">
-    <div class="header-left">
-      <img src="logo.png" alt="UNTXT" class="logo">
+  <!-- Universal Sidebar Navigation -->
+  <aside class="sidebar-nav" id="sidebarNav">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-content">
+        <img src="logo.png" alt="UNTXT" class="sidebar-logo-img">
+      </div>
+      <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 18l-6-6 6-6"></path>
+        </svg>
+      </button>
     </div>
-    <div class="header-right">
-      <!-- Save Indicator -->
-      <div id="saveIndicator" class="save-indicator"></div>
-      <span id="userInfo" class="user-email">Loading...</span>
 
-      <!-- Credits Widget -->
-      <div class="credits-widget" id="creditsWidget">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <nav class="sidebar-main-nav">
+      <!-- Projects Section -->
+      <div class="sidebar-projects">
+        <!-- Projects Header (collapsible) -->
+        <button class="projects-header" id="projectsHeader">
+          <span class="projects-header-text">Projects</span>
+          <svg class="projects-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6"></path>
+          </svg>
+        </button>
+
+        <!-- Projects List (collapsible) -->
+        <div class="projects-list" id="projectsList">
+          <!-- New Project Button -->
+          <button class="project-item project-new" id="newProjectBtn">
+            <svg class="project-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <path d="M12 11v6M9 14h6"></path>
+            </svg>
+            <span class="project-name">New Project</span>
+          </button>
+          <!-- Projects will be loaded dynamically from folders database -->
+        </div>
+      </div>
+    </nav>
+
+    <div class="sidebar-credits">
+      <div class="sidebar-credits-info">
+        <svg class="sidebar-credits-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle>
           <path d="M12 6v6l4 2"></path>
         </svg>
-        <div class="credits-info">
-          <span class="credits-label">Credits</span>
-          <span class="credits-balance" id="creditsBalance">--</span>
+        <div class="sidebar-credits-details">
+          <span class="sidebar-credits-label">Credits</span>
+          <span class="sidebar-credits-balance" id="sidebarCreditsBalance">--</span>
         </div>
-        <button class="btn-buy-credits" id="buyCreditsBtn" title="Buy more credits">+</button>
+      </div>
+      <button class="sidebar-credits-buy" id="sidebarBuyCreditsBtn" title="Buy more credits">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar-bottom">
+
+      <!-- Dropdown Menu (hidden by default) -->
+      <div class="sidebar-user-dropdown" id="sidebarUserDropdown">
+        <!-- User Info Header -->
+        <div class="dropdown-user-header">
+          <div class="dropdown-user-avatar" id="dropdownUserAvatar">U</div>
+          <div class="dropdown-user-info">
+            <div class="dropdown-user-name" id="dropdownUserName">Loading...</div>
+            <div class="dropdown-user-email" id="dropdownEmail">user@example.com</div>
+          </div>
+        </div>
+        <div class="dropdown-divider"></div>
+
+        <a href="settings.html" class="dropdown-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span>Account Settings</span>
+        </a>
+
+        <button class="dropdown-item" id="dropdownCreditsBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 6v6l4 2"></path>
+          </svg>
+          <span>Credits: <strong id="dropdownCreditsBalance">--</strong></span>
+        </button>
+
+        <div class="dropdown-divider"></div>
+
+        <button class="dropdown-item dropdown-item-danger" id="dropdownLogoutBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Logout</span>
+        </button>
       </div>
 
-      <button class="btn-account" id="accountBtn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
+      <!-- User Trigger Button (clickable) -->
+      <button class="sidebar-user" id="sidebarUserTrigger">
+        <div class="sidebar-user-avatar" id="sidebarUserAvatar">U</div>
+        <div class="sidebar-user-details">
+          <span class="sidebar-user-name" id="sidebarUserName">Loading...</span>
+          <span class="sidebar-user-plan" id="sidebarUserPlan">Free</span>
+        </div>
+        <svg class="sidebar-user-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 9l6 6 6-6"></path>
         </svg>
-        <span>Account</span>
       </button>
-      <button class="btn-logout" id="logoutBtn">Logout</button>
+
     </div>
-  </header>
+  </aside>
+
+  <!-- Main App Wrapper (Pushed by Sidebar) -->
+  <div class="app-wrapper">
 
   <!-- Upload Modal -->
   <div class="modal-overlay" id="uploadModal">
@@ -74,73 +159,8 @@
     </div>
   </div>
 
-  <!-- Purchase Credits Modal -->
-  <div class="modal-overlay" id="purchaseCreditsModal">
-    <div class="modal-content modal-credits">
-      <div class="modal-header">
-        <h2>Buy Credits</h2>
-        <button class="modal-close" id="closePurchaseModal">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-subtitle">Choose a credit package to continue processing documents</p>
-
-        <div class="credits-packages" id="creditsPackages">
-          <!-- Packages will be loaded dynamically -->
-          <div class="package-loading">Loading packages...</div>
-        </div>
-
-        <div class="purchase-footer">
-          <p class="purchase-note">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            1 credit = 1 page processed. Credits never expire.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- MAIN CONTENT -->
   <main class="app-main">
-
-    <!-- Folders Sidebar -->
-    <aside class="folders-sidebar" id="foldersSidebar">
-      <div class="folders-header">
-        <div class="folders-header-content">
-          <button class="btn-back-folders" id="backToFoldersBtn" title="Back to folders" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"></path>
-            </svg>
-          </button>
-          <h3 id="foldersHeaderTitle">Folders</h3>
-        </div>
-        <button class="btn-new-folder" id="newFolderBtn" title="New folder">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"></path>
-          </svg>
-        </button>
-      </div>
-
-      <div class="folders-list" id="foldersList">
-        <!-- All Documents (default) -->
-        <div class="folder-item all-documents active" data-folder-id="all">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <span>All Documents</span>
-          <span class="folder-count" id="allDocsCount">0</span>
-        </div>
-        <!-- User folders will be inserted here -->
-      </div>
-    </aside>
 
     <!-- Main Content Area -->
     <div class="main-content">
@@ -148,57 +168,28 @@
     <!-- VIEW 1: DASHBOARD (Default View) -->
     <div id="dashboardView" class="view active">
 
-      <!-- Recent Documents -->
+      <!-- Project Documents -->
       <section class="recent-section">
-        <div class="section-header-inline">
-          <h2>Recent Documents</h2>
-          <div class="header-controls">
-            <button class="btn-upload" id="uploadBtn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              <span>Upload</span>
-            </button>
-            <div class="stats-inline" id="statsInline">
-              <span><strong id="statTotalInline">0</strong> total</span>
-              <span><strong id="statProcessingInline">0</strong> processing</span>
-              <span><strong id="statCompletedInline">0</strong> completed</span>
-            </div>
-            <div class="view-toggle">
-              <button class="view-btn active" id="gridViewBtn" title="Grid View">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="14" width="7" height="7"></rect>
-                  <rect x="3" y="14" width="7" height="7"></rect>
-                </svg>
-              </button>
-              <button class="view-btn" id="listViewBtn" title="List View">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="8" y1="6" x2="21" y2="6"></line>
-                  <line x1="8" y1="12" x2="21" y2="12"></line>
-                  <line x1="8" y1="18" x2="21" y2="18"></line>
-                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-          </div>
+        <div class="project-header">
+          <h2 id="projectNameHeader">Loading...</h2>
         </div>
 
-        <div class="document-grid" id="documentGrid">
-          <!-- Document cards will be inserted here -->
-          <div class="empty-state">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
+        <!-- Upload Zone -->
+        <div class="upload-zone">
+          <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+          <label for="fileInput" class="upload-zone-label">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <p>No documents yet</p>
-            <small>Upload your first document to get started</small>
-          </div>
+            <span>Drop files here or click to browse</span>
+          </label>
+        </div>
+
+        <!-- Files List -->
+        <div class="document-grid" id="documentGrid">
+          <!-- Files table will be shown here -->
         </div>
       </section>
 
@@ -264,114 +255,70 @@
               </div>
             </div>
 
-            <!-- Document Preview with Optional Side Panel -->
-            <div class="document-viewer-layout">
+            <!-- Main Document Viewer (Tab-Based) -->
+            <div class="main-document-viewer">
 
-              <!-- Main Document Preview -->
-              <div class="content-card document-preview-main">
-                <div class="card-header">
-                  <h4>Document Preview</h4>
-                  <div class="preview-controls">
-                    <!-- View Toggle -->
-                    <div class="preview-toggle">
-                      <button class="toggle-btn active" data-view="untxt" id="toggleUntxt">UNTXT</button>
-                      <button class="toggle-btn" data-view="original" id="toggleOriginal">Original</button>
-                    </div>
-                    <!-- Toggle Extracted Text Panel -->
-                    <button class="btn-toggle-text" id="toggleExtractedText" title="Toggle Extracted Text">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 6h16M4 12h16M4 18h16"></path>
-                      </svg>
-                      <span>Extracted Text</span>
-                    </button>
-                  </div>
-                </div>
-                <div class="card-body">
-                  <!-- Preview Container (HIPAA-Compliant In-Memory Caching) -->
-                  <!-- Shows UNTXT HTML by default, Original PDF on demand -->
-                  <div class="preview-container-card" id="previewContainerCard">
-                    <div class="preview-placeholder">
-                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                      </svg>
-                      <p>Document Preview</p>
-                    </div>
-                  </div>
-                </div>
+              <!-- Document Title Header -->
+              <div class="viewer-document-header">
+                <h3 class="viewer-document-title" id="viewerDocTitle">document.pdf</h3>
               </div>
 
-              <!-- Side Panel: Extracted Text (Hidden by default) -->
-              <div class="content-card extracted-text-panel hidden" id="extractedTextPanel">
-                <div class="card-header">
-                  <h4>Extracted Text</h4>
-                  <div style="display: flex; gap: 8px;">
-                    <button class="btn-copy-header" id="copyTextHeaderBtn" title="Copy text">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
-                    </button>
-                    <button class="btn-close-panel" id="closeExtractedText" title="Close">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div class="card-body">
-                  <div class="text-preview-content" id="extractedTextPreview">
-                    <p class="text-loading">Loading text preview...</p>
-                  </div>
-                </div>
+              <!-- Format Tabs -->
+              <div class="inline-viewer-tabs">
+                <button class="inline-viewer-tab active" data-format="html" id="mainTabHtml">HTML</button>
+                <button class="inline-viewer-tab" data-format="txt" id="mainTabTxt">TXT</button>
+                <button class="inline-viewer-tab" data-format="json" id="mainTabJson">JSON</button>
               </div>
 
-            </div>
-
-            <!-- Bottom: Metrics and Actions -->
-            <div class="bottom-section">
-
-              <!-- Metrics -->
-              <div class="result-stats-inline">
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="charCount">0</span>
-                  <span class="stat-label">characters</span>
-                </div>
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="wordCount">0</span>
-                  <span class="stat-label">words</span>
-                </div>
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="confidence">0%</span>
-                  <span class="stat-label">confidence</span>
-                </div>
+              <!-- Download Toolbar -->
+              <div class="inline-viewer-download-toolbar">
+                <button class="btn-download-format" data-download="html" id="mainDownloadHtml">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download HTML
+                </button>
+                <button class="btn-download-format" data-download="txt" id="mainDownloadTxt">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download TXT
+                </button>
+                <button class="btn-download-format" data-download="json" id="mainDownloadJson">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download JSON
+                </button>
+                <button class="btn-download-all" data-download="all" id="mainDownloadAll">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download All
+                </button>
               </div>
 
-              <!-- Actions -->
-              <div class="result-actions">
-                <button class="btn-primary" id="downloadResultBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  Download Result
-                </button>
-                <button class="btn-secondary" id="downloadOriginalBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                  </svg>
-                  Download Original
-                </button>
-                <button class="btn-danger" id="deleteTaskBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                  Delete
-                </button>
+              <!-- Content Wrapper -->
+              <div class="inline-viewer-content-wrapper" id="mainViewerContentWrapper">
+                <div class="json-field-selector" id="mainJsonSelector" style="display: none;">
+                  <div class="json-selector-header">
+                    <button class="json-preset-dropdown" type="button">
+                      <span class="json-preset-text">Select Preset...</span>
+                      <svg class="json-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9l6 6 6-6"></path>
+                      </svg>
+                    </button>
+                    <div class="json-preset-menu" style="display: none;"></div>
+                  </div>
+                  <div class="json-field-list"></div>
+                  <div class="json-selector-actions">
+                    <input type="text" class="json-preset-name" placeholder="Preset name..." />
+                    <button class="btn-save-preset">Save Preset</button>
+                  </div>
+                </div>
+                <div class="inline-viewer-content format-html" id="mainViewerContent">
+                  <p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Use the main viewer to see document content</p>
+                </div>
               </div>
 
             </div>
@@ -414,52 +361,122 @@
 
   </main>
 
-  <!-- New Folder Modal -->
-  <div class="modal-overlay" id="newFolderModal">
-    <div class="modal-content modal-small">
-      <div class="modal-header">
-        <h2 id="folderModalTitle">New Folder</h2>
-        <button class="modal-close" id="closeNewFolderModal">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <form id="folderForm">
-          <div class="form-group">
-            <label for="folderName">Folder Name *</label>
-            <input type="text" id="folderName" name="folderName" maxlength="255" required placeholder="e.g., Invoices, Contracts">
-          </div>
-          <div class="form-group">
-            <label for="folderDescription">Description</label>
-            <textarea id="folderDescription" name="folderDescription" rows="3" placeholder="Optional description"></textarea>
-          </div>
-          <div class="form-group">
-            <label for="folderColor">Color</label>
-            <div class="color-picker">
-              <input type="color" id="folderColor" name="folderColor" value="#c7ff00">
-              <span class="color-label">Choose a color for this folder</span>
-            </div>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn-secondary" id="cancelFolderBtn">Cancel</button>
-            <button type="submit" class="btn-primary" id="saveFolderBtn">Create Folder</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
   <!-- WebSocket Status (subtle indicator) -->
   <div class="ws-indicator" id="wsIndicator">
     <div class="ws-dot"></div>
     <span class="ws-tooltip">Live updates</span>
   </div>
 
+  <!-- Format Selection Modal -->
+  <div class="modal-overlay" id="formatModal">
+    <div class="modal-content">
+      <h2 class="modal-title">Select Output Formats</h2>
+      <p class="modal-subtitle">Choose which formats you'd like to generate</p>
+
+      <div class="format-options">
+        <label class="format-option">
+          <input type="checkbox" id="formatModalHtml" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.html</span>
+            <span class="format-option-label">HTML</span>
+            <span class="format-option-description">Replica of original document</span>
+            <span class="format-option-warning">⚠ Takes longer to process</span>
+          </div>
+        </label>
+
+        <label class="format-option">
+          <input type="checkbox" id="formatModalTxt" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.txt</span>
+            <span class="format-option-label">Text</span>
+            <span class="format-option-description">Plain text extracted from HTML</span>
+          </div>
+        </label>
+
+        <label class="format-option">
+          <input type="checkbox" id="formatModalJson" class="format-modal-checkbox" checked>
+          <div class="format-option-content">
+            <span class="format-option-icon">.json</span>
+            <span class="format-option-label">JSON</span>
+            <span class="format-option-description">Structured data with metadata</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <label class="modal-save-default">
+          <span>Save as default</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="saveAsDefault" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+
+        <div class="modal-actions">
+          <button class="btn-modal-cancel" id="formatModalCancel">Cancel</button>
+          <button class="btn-modal-confirm" id="formatModalConfirm">Process</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New/Edit Folder Modal -->
+  <div class="modal-overlay" id="newFolderModal">
+    <div class="modal-content">
+      <h2 class="modal-title" id="folderModalTitle">Create New Project</h2>
+
+      <form id="folderForm">
+        <div class="form-group">
+          <label for="folderName">Project Name</label>
+          <input type="text" id="folderName" placeholder="Enter project name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="folderDescription">Description (optional)</label>
+          <textarea id="folderDescription" placeholder="Enter project description" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="folderColor">Color</label>
+          <input type="color" id="folderColor" value="#c7ff00">
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-modal-cancel" id="cancelFolderBtn">Cancel</button>
+          <button type="button" class="btn-modal-confirm" id="saveFolderBtn">Create Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteConfirmModal">
+    <div class="modal-content modal-confirm">
+      <div class="modal-confirm-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+      </div>
+      <h2 class="modal-title" id="deleteConfirmTitle">Delete Project?</h2>
+      <p class="modal-confirm-message" id="deleteConfirmMessage"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-modal-cancel" id="cancelDeleteBtn">Cancel</button>
+        <button type="button" class="btn-modal-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  </div> <!-- End .app-wrapper -->
+
   <script src="https://js.stripe.com/v3/"></script>
-  <script src="app.js"></script>
+  <script src="sidebar-nav.js?v=15"></script>
+  <script src="app.js?v=55"></script>
   <script src="credits.js"></script>
+  <script>
+    // Initialize sidebar navigation
+    SidebarNav.init('documents');
+  </script>
 </body>
 </html>

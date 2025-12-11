@@ -15,9 +15,16 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
+  // Redirect root to auth.html (login page)
+  if (req.url === '/' || req.url.startsWith('/?')) {
+    res.writeHead(302, { 'Location': '/auth.html' });
+    res.end();
+    return;
+  }
+
   // Strip query parameters from URL (e.g., ?session_id=...)
   const urlWithoutQuery = req.url.split('?')[0];
-  let filePath = urlWithoutQuery === '/' ? '/index.html' : urlWithoutQuery;
+  let filePath = urlWithoutQuery;
   filePath = path.join(__dirname, filePath);
 
   const ext = path.extname(filePath);
@@ -33,7 +40,13 @@ const server = http.createServer((req, res) => {
         res.end('500 Internal Server Error');
       }
     } else {
-      res.writeHead(200, { 'Content-Type': contentType });
+      const headers = {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      };
+      res.writeHead(200, headers);
       res.end(content);
     }
   });

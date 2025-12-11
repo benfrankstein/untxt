@@ -6,8 +6,42 @@ This module provides simulated OCR output for local development without running 
 import time
 import random
 import logging
+from html.parser import HTMLParser
 
 logger = logging.getLogger(__name__)
+
+
+class HTMLTextExtractor(HTMLParser):
+    """Extract clean text from HTML by stripping all tags"""
+    def __init__(self):
+        super().__init__()
+        self.text_parts = []
+        self.skip_tags = {'style', 'script', 'head', 'title', 'meta', 'link'}
+        self.current_tag = None
+
+    def handle_starttag(self, tag, attrs):
+        self.current_tag = tag
+
+    def handle_endtag(self, tag):
+        # Add spacing after block elements
+        if tag in {'p', 'div', 'br', 'tr', 'h1', 'h2', 'h3', 'table'}:
+            self.text_parts.append('\n')
+
+    def handle_data(self, data):
+        if self.current_tag not in self.skip_tags:
+            text = data.strip()
+            if text:
+                self.text_parts.append(text + ' ')
+
+    def get_text(self):
+        return '\n'.join(line.strip() for line in ''.join(self.text_parts).split('\n') if line.strip())
+
+
+def extract_text_from_html(html_content: str) -> str:
+    """Strip HTML tags and extract clean text"""
+    parser = HTMLTextExtractor()
+    parser.feed(html_content)
+    return parser.get_text()
 
 # Simulated HTML output (provided by user)
 SIMULATED_HTML_OUTPUT = """<!DOCTYPE html>
@@ -376,37 +410,23 @@ def simulate_qwen3_inference(image_path: str) -> dict:
 
     processing_time_ms = int((processing_end - processing_start) * 1000)
 
-    # Extract text content (simplified extraction for word count)
-    text_content = """
-    BUTTSTÄDTER VOLLKORNBAECKEREI GMBH
-    Quittung 1249830 vom 17.6.2025
-    grüne Heldin 6,50€
-    Landfrühstück 15,90€
-    Espresso single 2,50€
-    eisige Elsa - Früchte Waldmeister BIOTEA 7,00€
-    Total 31,90€
-
-    Quittung 341762 vom 17.6.2025
-    Obstschnitte 3,00€
-    Handelecke 2,49€
-    Espresso single 2,50€
-    Total 10,69€
-    """
-
-    word_count = len(text_content.split())
+    # Extract text content by stripping HTML tags
+    extracted_text = extract_text_from_html(SIMULATED_HTML_OUTPUT)
+    word_count = len(extracted_text.split())
 
     # Simulate confidence score (0.85 - 0.98)
     confidence = round(random.uniform(0.85, 0.98), 4)
 
     result = {
         'html_output': SIMULATED_HTML_OUTPUT,
-        'extracted_text': text_content.strip(),
+        'extracted_text': extracted_text,
         'confidence_score': confidence,
         'word_count': word_count,
         'page_count': 2,  # Two receipts in the HTML
         'processing_time_ms': processing_time_ms,
         'model_version': 'Qwen3-VL-3B-simulated',
         'structured_data': {
+            'placeholder': 'sample json output',
             'document_type': 'receipt',
             'receipts': [
                 {

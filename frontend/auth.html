@@ -4,329 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login / Sign Up - OCR Platform</title>
-  <style>
-    /* ============================================
-       FONT FACES - N27 Webfont
-       ============================================ */
-    @font-face {
-      font-family: 'n27regular';
-      src: url('fonts/n27-regular-webfont.woff2') format('woff2'),
-           url('fonts/n27-regular-webfont.woff') format('woff');
-      font-weight: normal;
-      font-style: normal;
-    }
-
-    @font-face {
-      font-family: 'n27medium';
-      src: url('fonts/n27-medium-webfont.woff2') format('woff2'),
-           url('fonts/n27-medium-webfont.woff') format('woff');
-      font-weight: normal;
-      font-style: normal;
-    }
-
-    @font-face {
-      font-family: 'n27bold';
-      src: url('fonts/n27-bold-webfont.woff2') format('woff2'),
-           url('fonts/n27-bold-webfont.woff') format('woff');
-      font-weight: normal;
-      font-style: normal;
-    }
-
-    /* ============================================
-       BASE STYLES
-       ============================================ */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'n27regular', system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-      background: #f3f0e7;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-      color: #1a1410;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
-    .auth-container {
-      background: #ffffff;
-      border-radius: 0.75rem;
-      box-shadow: 0 10px 24px rgba(26, 20, 16, 0.12);
-      max-width: 450px;
-      width: 100%;
-      overflow: hidden;
-      border: 1px solid rgba(174, 170, 151, 0.4);
-    }
-
-    /* ============================================
-       TABS
-       ============================================ */
-    .auth-tabs {
-      display: flex;
-      border-bottom: 1px solid rgba(174, 170, 151, 0.3);
-    }
-
-    .auth-tab {
-      flex: 1;
-      padding: 20px;
-      background: #f3f0e7;
-      border: none;
-      cursor: pointer;
-      font-family: 'n27medium', sans-serif;
-      font-size: 16px;
-      color: #aeaa97;
-      transition: all 0.2s ease-out;
-    }
-
-    .auth-tab.active {
-      background: #ffffff;
-      color: #e67e22;
-      border-bottom: 3px solid #e67e22;
-    }
-
-    .auth-tab:hover {
-      background: rgba(230, 126, 34, 0.08);
-      color: #e67e22;
-    }
-
-    .auth-tab.active:hover {
-      background: #ffffff;
-    }
-
-    /* ============================================
-       FORM CONTAINER
-       ============================================ */
-    .auth-form-container {
-      padding: 40px;
-    }
-
-    .auth-form {
-      display: none;
-    }
-
-    .auth-form.active {
-      display: block;
-      animation: fadeIn 0.3s;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ============================================
-       FORM ELEMENTS
-       ============================================ */
-    .form-group {
-      margin-bottom: 24px;
-    }
-
-    .form-label {
-      display: block;
-      margin-bottom: 8px;
-      font-family: 'n27medium', sans-serif;
-      color: #1a1410;
-      font-size: 14px;
-    }
-
-    .form-input {
-      width: 100%;
-      padding: 12px 16px;
-      border: 2px solid rgba(174, 170, 151, 0.4);
-      border-radius: 0.5rem;
-      font-family: 'n27regular', sans-serif;
-      font-size: 16px;
-      transition: all 0.2s ease-out;
-      background: #ffffff;
-      color: #1a1410;
-    }
-
-    .form-input::placeholder {
-      color: #aeaa97;
-    }
-
-    .form-input:focus {
-      outline: none;
-      border-color: #e67e22;
-      box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.15);
-    }
-
-    .form-input.error {
-      border-color: #ff4444;
-    }
-
-    .form-error {
-      color: #ff4444;
-      font-family: 'n27regular', sans-serif;
-      font-size: 13px;
-      margin-top: 6px;
-      display: none;
-    }
-
-    .form-error.visible {
-      display: block;
-    }
-
-    /* ============================================
-       PASSWORD REQUIREMENTS
-       ============================================ */
-    .password-requirements {
-      background: #f3f0e7;
-      border: 1px solid rgba(174, 170, 151, 0.4);
-      border-radius: 0.5rem;
-      padding: 12px;
-      margin-top: 8px;
-      font-size: 13px;
-    }
-
-    .requirement {
-      display: flex;
-      align-items: center;
-      margin: 6px 0;
-      color: #aeaa97;
-      font-family: 'n27regular', sans-serif;
-    }
-
-    .requirement.met {
-      color: #e67e22;
-    }
-
-    .requirement::before {
-      content: '✗';
-      margin-right: 8px;
-      font-weight: bold;
-    }
-
-    .requirement.met::before {
-      content: '✓';
-    }
-
-    /* ============================================
-       BUTTONS (Primary style from styleguide)
-       ============================================ */
-    .form-button {
-      width: 100%;
-      min-height: 3rem;
-      padding: 0 1.5rem;
-      background-color: #e67e22;
-      color: #ffffff;
-      border: 2px solid #e67e22;
-      border-radius: 0.5rem;
-      font-family: 'n27medium', sans-serif;
-      font-size: 16px;
-      cursor: pointer;
-      transition: background-color 200ms ease-out, border-color 200ms ease-out;
-    }
-
-    .form-button:hover {
-      background-color: #d35400;
-      border-color: #d35400;
-    }
-
-    .form-button:active {
-      background-color: #c44d0f;
-      border-color: #c44d0f;
-    }
-
-    .form-button:focus-visible {
-      outline: 2px solid #e67e22;
-      outline-offset: 3px;
-    }
-
-    .form-button:disabled {
-      opacity: 0.35;
-      cursor: not-allowed;
-    }
-
-    /* ============================================
-       ALERTS
-       ============================================ */
-    .alert {
-      padding: 12px 16px;
-      border-radius: 0.5rem;
-      margin-bottom: 20px;
-      font-family: 'n27regular', sans-serif;
-      font-size: 14px;
-      display: none;
-    }
-
-    .alert.visible {
-      display: block;
-      animation: slideDown 0.3s;
-    }
-
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .alert.success {
-      background: rgba(230, 126, 34, 0.15);
-      color: #d35400;
-      border: 1px solid #e67e22;
-    }
-
-    .alert.error {
-      background: rgba(255, 68, 68, 0.15);
-      color: #cc0000;
-      border: 1px solid #ff4444;
-    }
-
-    /* ============================================
-       PASSWORD TOGGLE
-       ============================================ */
-    .password-toggle {
-      position: absolute;
-      right: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      cursor: pointer;
-      user-select: none;
-      transition: all 0.2s ease-out;
-      width: 24px;
-      height: 24px;
-    }
-
-    .password-toggle svg {
-      width: 100%;
-      height: 100%;
-      stroke: #e67e22;
-      fill: none;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      transition: all 0.2s ease-out;
-    }
-
-    .password-toggle:hover svg {
-      stroke: #d35400;
-    }
-
-    .input-wrapper {
-      position: relative;
-    }
-
-    /* ============================================
-       LOGO
-       ============================================ */
-    .auth-logo {
-      text-align: center;
-      padding: 20px 40px 15px;
-      background: #ffffff;
-    }
-
-    .auth-logo img {
-      width: 200px;
-      height: auto;
-      max-width: 80%;
-    }
-  </style>
+  <link rel="stylesheet" href="base.css?v=2">
+  <link rel="stylesheet" href="auth.css?v=2">
 </head>
 <body>
   <div class="auth-container">
@@ -382,6 +61,20 @@
         <button type="submit" class="form-button" id="loginButton">
           Log In
         </button>
+
+        <div class="auth-divider">
+          <span>or</span>
+        </div>
+
+        <a href="http://localhost:8080/api/auth/google" class="google-button">
+          <svg class="google-icon" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </a>
       </form>
 
       <!-- Signup Form -->
@@ -477,6 +170,20 @@
         <button type="submit" class="form-button" id="signupButton">
           Create Account
         </button>
+
+        <div class="auth-divider">
+          <span>or</span>
+        </div>
+
+        <a href="http://localhost:8080/api/auth/google" class="google-button">
+          <svg class="google-icon" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continue with Google
+        </a>
       </form>
     </div>
   </div>

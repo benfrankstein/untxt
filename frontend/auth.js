@@ -1,6 +1,20 @@
 // Configuration
 const API_URL = 'http://localhost:8080';
 
+// Check for OAuth error in URL params
+const urlParams = new URLSearchParams(window.location.search);
+const oauthError = urlParams.get('error');
+
+if (oauthError) {
+  // Show error message
+  setTimeout(() => {
+    showAlert(decodeURIComponent(oauthError), 'error');
+  }, 100);
+
+  // Clean URL
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 // Tab switching
 document.querySelectorAll('.auth-tab').forEach(tab => {
   tab.addEventListener('click', () => {

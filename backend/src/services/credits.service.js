@@ -111,15 +111,15 @@ class CreditsService {
       // Log to audit service
       await auditService.logEvent({
         userId,
-        action: 'credit_deduction',
-        description: `Deducted ${amount} credits`,
-        metadata: JSON.stringify({
+        eventType: 'credit_deduction',
+        eventCategory: 'credits',
+        details: {
           transactionId,
           taskId,
           amount,
           newBalance,
           ...metadata
-        })
+        }
       });
 
       return {

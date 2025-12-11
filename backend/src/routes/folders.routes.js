@@ -178,23 +178,10 @@ router.delete('/:folderId', requireAuth, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    // Delete folder (trigger will log to audit)
+    // Delete folder (database trigger will automatically log to audit)
     await db.deleteFolder(folderId);
 
-    // Additional manual audit log
-    await db.logFolderAction({
-      folderId,
-      userId,
-      action: 'folder_deleted',
-      details: {
-        name: folder.name,
-        task_count: parseInt(folder.task_count) || 0
-      },
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent')
-    });
-
-    console.log(`✓ Folder deleted: "${folder.name}" (${folderId}) with ${folder.task_count} tasks`);
+    console.log(`✓ Folder deleted: "${folder.name}" (${folderId}) with ${folder.task_count || 0} tasks`);
 
     res.json({ success: true });
   } catch (error) {

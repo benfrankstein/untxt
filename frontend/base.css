@@ -1,0 +1,117 @@
+/* ================================
+   BASE.CSS - Centralized Foundation
+   Shared across all pages
+   ================================ */
+
+/* ============================================
+   FONT FACES
+   ============================================ */
+@font-face {
+  font-family: 'n27regular';
+  src: url('fonts/n27-regular-webfont.woff2') format('woff2'),
+       url('fonts/n27-regular-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'n27medium';
+  src: url('fonts/n27-medium-webfont.woff2') format('woff2'),
+       url('fonts/n27-medium-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'n27bold';
+  src: url('fonts/n27-bold-webfont.woff2') format('woff2'),
+       url('fonts/n27-bold-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'n27light';
+  src: url('fonts/n27-light-webfont.woff2') format('woff2'),
+       url('fonts/n27-light-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'n27extralight';
+  src: url('fonts/n27-extralight-webfont.woff2') format('woff2'),
+       url('fonts/n27-extralight-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'n27thin';
+  src: url('fonts/n27-thin-webfont.woff2') format('woff2'),
+       url('fonts/n27-thin-webfont.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* ============================================
+   CSS CUSTOM PROPERTIES
+   Change these to update colors globally
+   ============================================ */
+:root {
+  /* Brand Colors - Claude.ai inspired palette */
+  --color-bg: #FAF9F5;           /* Main content area - very light off-white */
+  --color-bg-surface: #F5F4EE;   /* Sidebar - warm light gray/beige */
+  --color-neutral: #aeaa97;
+  --color-text: #000000;         /* Pure black for text */
+  --color-text-secondary: rgba(0, 0, 0, 0.65);  /* 65% black for secondary text */
+  --color-accent: #7ba82e;
+
+  /* Accent/Primary Colors */
+  --color-primary: #7ba82e;
+  --color-primary-hover: #8fb938;
+  --color-primary-active: #6a9428;
+  --color-primary-text: #ffffff;  /* Button text color */
+
+  /* Secondary Button Colors (outline → fill) */
+  --btn-secondary-bg: transparent;
+  --btn-secondary-bg-hover: #7ba82e;
+  --btn-secondary-bg-active: rgba(123, 168, 46, 0.40);
+  --btn-secondary-fg: #000000;
+  --btn-secondary-fg-hover: #000000;
+  --btn-secondary-fg-active: #000000;
+  --btn-secondary-border: #7ba82e;
+  --btn-secondary-border-hover: #7ba82e;
+  --btn-secondary-border-active: #6a9428;
+
+  /* System Colors */
+  --color-error: #ff4444;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+
+  /* Shadows */
+  --shadow-soft: 0 4px 14px rgba(58, 42, 40, 0.08);
+  --shadow-medium: 0 10px 24px rgba(58, 42, 40, 0.12);
+
+  /* Spacing Scale (8px base) */
+  --space-1: 0.5rem;  /* 8px */
+  --space-2: 1rem;    /* 16px */
+  --space-3: 1.5rem;  /* 24px */
+  --space-4: 2rem;    /* 32px */
+  --space-5: 2.5rem;  /* 40px */
+  --space-6: 3rem;    /* 48px */
+
+  /* Typography */
+  --font-family-base: 'n27regular', system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-family-medium: 'n27medium', sans-serif;
+  --font-family-bold: 'n27bold', sans-serif;
+
+  /* Legacy Aliases (for compatibility with existing code) */
+  --primary: var(--color-primary);
+  --primary-dark: var(--color-primary-hover);
+  --primary-light: var(--color-primary);
+  --error: var(--color-error);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --shadow-xl: var(--shadow-medium);
+}

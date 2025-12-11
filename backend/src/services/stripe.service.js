@@ -82,8 +82,8 @@ class StripeService {
           credits: creditPackage.credits,
           ...metadata
         },
-        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?cancelled=true`,
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings.html?session_id={CHECKOUT_SESSION_ID}#credits`,
+        cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/settings.html#credits`,
       });
 
       // Log checkout session creation

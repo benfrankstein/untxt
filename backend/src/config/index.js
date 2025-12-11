@@ -63,4 +63,18 @@ module.exports = {
     notificationsChannel: 'ocr:notifications',
     userNotificationsPrefix: 'ocr:notifications:user:',
   },
+
+  // Worker Pool Configuration
+  workerPool: {
+    enabled: process.env.WORKER_POOL_ENABLED !== 'false',
+    autoRestart: process.env.WORKER_POOL_AUTO_RESTART !== 'false',
+    healthCheckInterval: parseInt(process.env.WORKER_HEALTH_CHECK_INTERVAL) || 30000,
+  },
+
+  // Google OAuth
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:8080/api/auth/google/callback',
+  },
 };

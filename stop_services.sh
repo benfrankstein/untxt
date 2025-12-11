@@ -113,10 +113,45 @@ main() {
     fi
     echo ""
 
-    # Stop Worker (Phase 2)
-    if [ -f "$WORKER_PID" ]; then
-        stop_process "OCR Worker" "$WORKER_PID"
+    # Stop MLX Worker Pool (Phase 2)
+    print_info "Stopping MLX Worker Pool..."
+
+    # Find and kill worker_pool_manager process
+    POOL_PID=$(pgrep -f "worker_pool_manager.py" | head -1)
+    if [ -n "$POOL_PID" ]; then
+        print_info "Stopping worker pool manager (PID: $POOL_PID)..."
+        kill "$POOL_PID" 2>/dev/null
+
+        # Wait for graceful shutdown (max 15 seconds)
+        for i in {1..15}; do
+            if ! kill -0 "$POOL_PID" 2>/dev/null; then
+                print_success "Worker pool stopped"
+                break
+            fi
+            sleep 1
+        done
+
+        # Force kill if still running
+        if kill -0 "$POOL_PID" 2>/dev/null; then
+            print_info "Force stopping worker pool..."
+            kill -9 "$POOL_PID" 2>/dev/null
+            print_success "Worker pool stopped (forced)"
+        fi
+    else
+        print_info "Worker pool is not running"
     fi
+
+    # Clean up any remaining qwen_worker processes
+    WORKER_PIDS=$(pgrep -f "qwen_worker" | tr '\n' ' ')
+    if [ -n "$WORKER_PIDS" ]; then
+        print_info "Cleaning up remaining worker processes..."
+        pkill -f "qwen_worker"
+        sleep 1
+        print_success "Worker processes cleaned up"
+    fi
+
+    # Clean up old worker PID file if it exists
+    rm -f "$WORKER_PID"
     echo ""
 
     # Stop Redis (Phase 1)

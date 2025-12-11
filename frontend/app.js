@@ -24,7 +24,7 @@ let loadTasksTimeout = null;
 
 // Folder state
 let folders = [];
-let currentFolderId = 'all'; // 'all' or folder UUID
+let currentFolderId = null; // null (not selected yet), 'all', or folder UUID
 let isEditingFolder = false;
 let editingFolderId = null;
 
@@ -42,21 +42,88 @@ const pdfCache = new Map(); // taskId -> { blobUrl: string, timestamp: number }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // Check for OAuth success in URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const loginSuccess = urlParams.get('login');
+  const linkedSuccess = urlParams.get('linked');
+
+  if (loginSuccess === 'success') {
+    // Show success message
+    showNotification('Successfully signed in with Google!', 'success');
+
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  if (linkedSuccess === 'success') {
+    // Show success message for account linking
+    showNotification('Google account linked successfully!', 'success');
+
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
   // Check if user is authenticated
+  console.log('🔒 Checking authentication...');
   const isAuthenticated = await checkAuth();
+  console.log('🔒 Authentication result:', isAuthenticated);
+
   if (!isAuthenticated) {
+    console.log('❌ Not authenticated, redirecting to auth page');
     window.location.href = 'auth.html';
     return;
   }
+
+  console.log('✅ Authenticated, loading dashboard...');
 
   // Initialize inactivity tracking (15 minute timeout)
   initInactivityTracking();
 
   initUpload();
+  initFormatModal();
+  initEmptyStateUpload();
   initWebSocket();
   initFolders();
-  loadFolders();
-  loadTasks();
+  await loadFolders();
+  await loadTasks();
+
+  // Check URL parameters for project selection (reuse urlParams from above)
+  const projectParam = urlParams.get('project');
+
+  // Check if a project was selected from the sidebar or URL
+  const selectedProject = projectParam || localStorage.getItem('selectedProject');
+  if (selectedProject) {
+    // Clear the flag
+    localStorage.removeItem('selectedProject');
+
+    console.log('📁 Auto-selecting project from sidebar:', selectedProject);
+
+    // Wait a bit for tasks to load, then select folder
+    setTimeout(() => {
+      // Check if this project/folder exists
+      const folderExists = folders.some(f => f.id === selectedProject);
+
+      if (folderExists) {
+        // Select the specific folder
+        selectFolder(selectedProject);
+      } else {
+        // Folder doesn't exist, show all documents instead
+        console.log('⚠️ Folder not found, showing all documents');
+        selectFolder('all');
+      }
+    }, 500);
+  } else {
+    // No project selected, auto-select first folder in list
+    setTimeout(() => {
+      if (folders.length > 0) {
+        console.log('📁 Auto-selecting first folder:', folders[0].name);
+        selectFolder(folders[0].id);
+      } else {
+        // No folders, select "All Documents"
+        selectFolder('all');
+      }
+    }, 500);
+  }
 
   // Upload button - opens modal
   const uploadBtn = document.getElementById('uploadBtn');
@@ -106,6 +173,342 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('copyTextHeaderBtn')?.addEventListener('click', copyExtractedTextHeader);
   document.getElementById('downloadResultBtn')?.addEventListener('click', () => downloadResult(currentTask.id));
   document.getElementById('downloadOriginalBtn')?.addEventListener('click', () => downloadOriginal(currentTask.id));
+
+  // Don't render files list here - wait for folder selection
+  // renderFilesList();
+
+  // Function to open a task in inline viewer dropdown
+  async function openTaskInViewer(taskId) {
+    try {
+      console.log('Opening task in viewer, taskId:', taskId);
+
+      // Find the row for this task
+      const row = document.querySelector(`tr.file-row[data-task-id="${taskId}"]`);
+      if (!row) {
+        console.error('Row not found for taskId:', taskId);
+        return;
+      }
+
+      // Fetch the task details
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+        credentials: 'include',
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch task');
+      }
+
+      const data = await response.json();
+      // The task is nested in data.data.task (not just data.data)
+      const task = data.data?.task || data.data;
+
+      console.log('Task fetched:', task);
+      console.log('Task ID:', task.id);
+
+      // Set as current task
+      currentTask = task;
+
+      // Show inline viewer for this row
+      await showInlineViewer(row, task);
+
+    } catch (error) {
+      console.error('Error opening task in viewer:', error);
+      showToast('Failed to load document', 'error');
+    }
+  }
+
+  // Function to show inline viewer below a row
+  async function showInlineViewer(row, task) {
+    const table = row.closest('tbody');
+    const existingViewer = table.querySelector('.inline-viewer-row');
+
+    // Close existing viewer if open
+    if (existingViewer) {
+      existingViewer.remove();
+      const allRows = table.querySelectorAll('.file-row');
+      allRows.forEach(r => {
+        r.classList.remove('viewer-active');
+        // Revert Close button back to View button
+        const viewBtn = r.querySelector('.btn-view, .btn-close-viewer');
+        if (viewBtn && viewBtn.classList.contains('btn-close-viewer')) {
+          viewBtn.className = 'btn-view';
+          viewBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            View
+          `;
+        }
+      });
+    }
+
+    // Mark this row as active
+    row.classList.add('viewer-active');
+
+    // Change View button to Close button
+    const viewBtn = row.querySelector('.btn-view');
+    if (viewBtn) {
+      viewBtn.className = 'btn-close-viewer';
+      viewBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"></path>
+        </svg>
+        Close
+      `;
+    }
+
+    // Create inline viewer row
+    const viewerRow = document.createElement('tr');
+    viewerRow.className = 'inline-viewer-row';
+    viewerRow.innerHTML = `
+      <td colspan="6">
+        <div class="inline-viewer">
+          <div class="inline-viewer-tabs">
+            <button class="inline-viewer-tab active" data-format="html">HTML</button>
+            <button class="inline-viewer-tab" data-format="txt">TXT</button>
+            <button class="inline-viewer-tab" data-format="json">JSON</button>
+          </div>
+          <div class="inline-viewer-download-toolbar">
+            <button class="btn-download-format" data-download="html">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download HTML
+            </button>
+            <button class="btn-download-format" data-download="txt">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download TXT
+            </button>
+            <button class="btn-download-format" data-download="json">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download JSON
+            </button>
+            <button class="btn-download-all" data-download="all">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download All
+            </button>
+          </div>
+          <div class="inline-viewer-content format-html" data-task-id="${task.id}">
+            <p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>
+          </div>
+        </div>
+      </td>
+    `;
+
+    // Insert after current row
+    row.after(viewerRow);
+
+    // Setup tab switching
+    const tabs = viewerRow.querySelectorAll('.inline-viewer-tab');
+    const content = viewerRow.querySelector('.inline-viewer-content');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const format = tab.dataset.format;
+
+        // Store current scroll position before any DOM changes
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        content.className = `inline-viewer-content format-${format}`;
+
+        // Use requestAnimationFrame to ensure scroll position is maintained
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+        });
+
+        await loadInlineViewerContent(task.id, format, content);
+
+        // Restore scroll position again after content loads
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+        });
+      });
+    });
+
+    // Setup download buttons
+    const downloadBtns = viewerRow.querySelectorAll('.btn-download-format, .btn-download-all');
+    downloadBtns.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const downloadType = btn.dataset.download;
+        if (downloadType === 'all') {
+          await downloadAllFormats(task);
+        } else {
+          await downloadFormat(task, downloadType);
+        }
+      });
+    });
+
+    // Load HTML by default
+    await loadInlineViewerContent(task.id, 'html', content);
+  }
+
+  // Function to close inline viewer
+  function closeInlineViewer(row) {
+    const table = row.closest('tbody');
+    const viewerRow = table.querySelector('.inline-viewer-row');
+
+    if (viewerRow) {
+      viewerRow.remove();
+    }
+
+    row.classList.remove('viewer-active');
+
+    // Revert Close button back to View button
+    const closeBtn = row.querySelector('.btn-close-viewer');
+    if (closeBtn) {
+      closeBtn.className = 'btn-view';
+      closeBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        View
+      `;
+    }
+  }
+
+  // Load content for inline viewer
+  async function loadInlineViewerContent(taskId, format, contentElement) {
+    try {
+      contentElement.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>';
+
+      if (format === 'html') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/preview`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load HTML');
+
+        const htmlContent = await response.text();
+
+        // Create iframe and set srcdoc directly to avoid escaping issues
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width: 100%; height: 600px; border: none; background: white; border-radius: 4px;';
+        iframe.sandbox = 'allow-same-origin allow-scripts';
+        iframe.srcdoc = htmlContent;
+
+        contentElement.innerHTML = '';
+        contentElement.appendChild(iframe);
+      } else if (format === 'txt') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/txt`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load text');
+
+        const txtContent = await response.text();
+        contentElement.textContent = txtContent;
+      } else if (format === 'json') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/json`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load JSON');
+
+        const jsonData = await response.json();
+        contentElement.textContent = JSON.stringify(jsonData, null, 2);
+      }
+    } catch (error) {
+      console.error(`Error loading ${format}:`, error);
+      contentElement.innerHTML = `<p style="color: #ef4444; text-align: center; padding: 2rem;">Failed to load ${format.toUpperCase()} content</p>`;
+    }
+  }
+
+  // Download format helper
+  async function downloadFormat(task, format) {
+    const taskId = task.id;
+    const filename = task.filename.replace(/\.[^/.]+$/, '');
+
+    try {
+      let url, downloadFilename;
+
+      if (format === 'html') {
+        url = `${API_URL}/api/tasks/${taskId}/result`;
+        downloadFilename = `${filename}_result.pdf`;
+      } else if (format === 'txt') {
+        url = `${API_URL}/api/tasks/${taskId}/txt`;
+        downloadFilename = `${filename}_extracted.txt`;
+      } else if (format === 'json') {
+        url = `${API_URL}/api/tasks/${taskId}/json`;
+        downloadFilename = `${filename}_data.json`;
+      }
+
+      const response = await fetch(url, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = downloadFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+
+      showToast(`Downloaded ${format.toUpperCase()}`, 'success');
+    } catch (error) {
+      console.error(`Error downloading ${format}:`, error);
+      showToast(`Failed to download ${format.toUpperCase()}`, 'error');
+    }
+  }
+
+  // Download all formats
+  async function downloadAllFormats(task) {
+    await downloadFormat(task, 'html');
+    setTimeout(() => downloadFormat(task, 'txt'), 200);
+    setTimeout(() => downloadFormat(task, 'json'), 400);
+    showToast('Downloading all formats...', 'info');
+  }
+
+  // Handle View/Close button clicks - open or close task in viewer
+  document.addEventListener('click', async (e) => {
+    // Handle View button - open viewer
+    const viewBtn = e.target.closest('.btn-view');
+    if (viewBtn) {
+      e.stopPropagation();
+      const taskId = viewBtn.dataset.taskId;
+      if (taskId) {
+        await openTaskInViewer(taskId);
+      }
+      return;
+    }
+
+    // Handle Close button - close viewer
+    const closeBtn = e.target.closest('.btn-close-viewer');
+    if (closeBtn) {
+      e.stopPropagation();
+      const row = closeBtn.closest('.file-row');
+      if (row) {
+        closeInlineViewer(row);
+      }
+    }
+  });
+
   document.getElementById('deleteTaskBtn')?.addEventListener('click', () => deleteTaskFromViewer(currentTask.id));
   document.getElementById('retryBtn')?.addEventListener('click', retryTask);
   document.getElementById('backToListBtn')?.addEventListener('click', showDashboard);
@@ -134,13 +537,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('viewMode', 'list');
     });
 
-    // Restore saved view mode
-    const savedView = localStorage.getItem('viewMode');
-    if (savedView === 'list') {
-      documentGrid.classList.add('list-view');
-      listViewBtn.classList.add('active');
-      gridViewBtn.classList.remove('active');
-    }
+    // Always use list view
+    documentGrid.classList.add('list-view');
+    listViewBtn.classList.add('active');
+    gridViewBtn.classList.remove('active');
+    localStorage.setItem('viewMode', 'list');
   }
 
   // Extracted text panel toggle
@@ -157,7 +558,195 @@ document.addEventListener('DOMContentLoaded', async () => {
       panel.classList.add('hidden');
     }
   });
+
+  // Setup main document viewer
+  setupMainDocumentViewer();
+  setupMainViewerDownloadButtons();
 });
+
+// ==========================================
+// MAIN DOCUMENT VIEWER - TAB SWITCHING
+// ==========================================
+
+function setupMainDocumentViewer() {
+  const tabs = document.querySelectorAll('#mainTabHtml, #mainTabTxt, #mainTabJson');
+  const content = document.getElementById('mainViewerContent');
+  const contentWrapper = document.getElementById('mainViewerContentWrapper');
+  const jsonSelector = document.getElementById('mainJsonSelector');
+
+  if (!tabs.length || !content) return;
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', async () => {
+      const format = tab.dataset.format;
+
+      // Update active tab
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Update content class
+      content.className = `inline-viewer-content format-${format}`;
+
+      // Load content for selected format
+      await loadMainViewerContent(format);
+    });
+  });
+}
+
+async function loadMainViewerContent(format) {
+  const content = document.getElementById('mainViewerContent');
+  const contentWrapper = document.getElementById('mainViewerContentWrapper');
+  const jsonSelector = document.getElementById('mainJsonSelector');
+
+  if (!currentTask || !currentTask.id) {
+    content.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">No document selected</p>';
+    return;
+  }
+
+  const taskId = currentTask.id;
+
+  try {
+    if (format === 'html') {
+      // Hide JSON selector
+      jsonSelector.style.display = 'none';
+      contentWrapper.classList.remove('has-json-sidebar');
+
+      // Load HTML preview in iframe
+      content.innerHTML = `
+        <iframe
+          id="htmlPreviewFrame"
+          style="width: 100%; height: 600px; border: none; background: white; border-radius: 4px;"
+          sandbox="allow-same-origin"
+        ></iframe>
+      `;
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/preview`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load HTML');
+
+      const htmlContent = await response.text();
+      const iframe = document.getElementById('htmlPreviewFrame');
+      iframe.srcdoc = htmlContent;
+
+    } else if (format === 'txt') {
+      // Hide JSON selector
+      jsonSelector.style.display = 'none';
+      contentWrapper.classList.remove('has-json-sidebar');
+
+      // Load TXT content
+      content.textContent = 'Loading text...';
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/txt`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load text');
+
+      const txtContent = await response.text();
+      content.textContent = txtContent;
+
+    } else if (format === 'json') {
+      // Show JSON selector
+      jsonSelector.style.display = 'flex';
+      contentWrapper.classList.add('has-json-sidebar');
+
+      // Load JSON content
+      content.textContent = 'Loading JSON...';
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/json`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load JSON');
+
+      const jsonData = await response.json();
+      content.textContent = JSON.stringify(jsonData, null, 2);
+
+      // Initialize JSON field selector (reuse existing function if available)
+      const mainViewer = document.querySelector('.main-document-viewer');
+      if (mainViewer && typeof initJsonFieldSelector === 'function') {
+        initJsonFieldSelector(mainViewer, JSON.stringify(jsonData), currentTask.filename);
+      }
+    }
+
+  } catch (error) {
+    console.error(`Error loading ${format}:`, error);
+    content.innerHTML = `<p style="color: #ef4444; text-align: center; padding: 2rem;">Failed to load ${format.toUpperCase()} content</p>`;
+  }
+}
+
+function setupMainViewerDownloadButtons() {
+  const downloadHtml = document.getElementById('mainDownloadHtml');
+  const downloadTxt = document.getElementById('mainDownloadTxt');
+  const downloadJson = document.getElementById('mainDownloadJson');
+  const downloadAll = document.getElementById('mainDownloadAll');
+
+  if (downloadHtml) {
+    downloadHtml.addEventListener('click', () => downloadMainViewerFormat('html'));
+  }
+  if (downloadTxt) {
+    downloadTxt.addEventListener('click', () => downloadMainViewerFormat('txt'));
+  }
+  if (downloadJson) {
+    downloadJson.addEventListener('click', () => downloadMainViewerFormat('json'));
+  }
+  if (downloadAll) {
+    downloadAll.addEventListener('click', () => downloadAllMainViewerFormats());
+  }
+}
+
+async function downloadMainViewerFormat(format) {
+  if (!currentTask || !currentTask.id) return;
+
+  const taskId = currentTask.id;
+  const filename = currentTask.filename.replace(/\.[^/.]+$/, '');
+
+  try {
+    let url, downloadFilename;
+
+    if (format === 'html') {
+      url = `${API_URL}/api/tasks/${taskId}/result`; // Downloads as PDF
+      downloadFilename = `${filename}_result.pdf`;
+    } else if (format === 'txt') {
+      url = `${API_URL}/api/tasks/${taskId}/txt`;
+      downloadFilename = `${filename}_extracted.txt`;
+    } else if (format === 'json') {
+      url = `${API_URL}/api/tasks/${taskId}/json`;
+      downloadFilename = `${filename}_data.json`;
+    }
+
+    const response = await fetch(url, {
+      headers: { 'x-user-id': USER_ID }
+    });
+
+    if (!response.ok) throw new Error('Download failed');
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = downloadFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+
+    showToast(`Downloaded ${format.toUpperCase()}`, 'success');
+
+  } catch (error) {
+    console.error(`Error downloading ${format}:`, error);
+    showToast(`Failed to download ${format.toUpperCase()}`, 'error');
+  }
+}
+
+async function downloadAllMainViewerFormats() {
+  await downloadMainViewerFormat('html');
+  setTimeout(() => downloadMainViewerFormat('txt'), 200);
+  setTimeout(() => downloadMainViewerFormat('json'), 400);
+  showToast('Downloading all formats...', 'info');
+}
 
 // HIPAA Compliance: Clear PDF cache when user navigates away or closes tab
 window.addEventListener('beforeunload', () => {
@@ -325,6 +914,15 @@ async function showViewer(task) {
     // Load UNTXT preview by default (processed HTML)
     // Original PDF will be loaded on-demand when user clicks "Original" button
     loadDocumentPreview(task.id);
+
+    // Load HTML tab content in main viewer
+    loadMainViewerContent('html');
+
+    // Update viewer title
+    const viewerDocTitle = document.getElementById('viewerDocTitle');
+    if (viewerDocTitle) {
+      viewerDocTitle.textContent = task.filename;
+    }
   } else if (task.status === 'failed') {
     showErrorCard(task);
   } else {
@@ -399,60 +997,1109 @@ function updateProcessingStatus(status) {
 }
 
 // ==========================================
-// UPLOAD FUNCTIONALITY
+// FILES LIST RENDERING
 // ==========================================
 
-function initUpload() {
-  const uploadDropzone = document.getElementById('uploadDropzone');
-  const fileInput = document.getElementById('fileInput');
+async function renderFilesList() {
+  const grid = document.getElementById('documentGrid');
 
-  uploadDropzone.addEventListener('click', () => fileInput.click());
+  // Don't render if no folder is selected yet
+  if (currentFolderId === null) {
+    grid.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>';
+    return;
+  }
 
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
+  // Filter tasks by current folder
+  let filteredTasks = tasks;
+  if (currentFolderId && currentFolderId !== 'all') {
+    filteredTasks = tasks.filter(task => task.folder_id === currentFolderId);
+  }
+
+  // If no tasks, show empty state
+  if (filteredTasks.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <p>No documents in this folder</p>
+        <small>Upload files or drag existing files into this folder to organize them</small>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = `
+    <div class="files-list-container">
+      <table class="files-table">
+        <thead>
+          <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" id="selectAllFiles" class="file-checkbox">
+            </th>
+            <th class="sortable">Name</th>
+            <th class="sortable"># of Pages</th>
+            <th class="sortable">Status</th>
+            <th>Action</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredTasks.map(task => {
+            const isCompleted = task.status === 'completed';
+            const isProcessing = task.status === 'processing' || task.status === 'pending';
+            const isFailed = task.status === 'failed';
+
+            // Render status cell differently for processing files
+            let statusCell;
+            if (isProcessing) {
+              statusCell = `<span class="status-badge status-processing">Processing...</span>`;
+            } else if (isFailed) {
+              statusCell = `<span class="status-badge status-failed">Failed</span>`;
+            } else {
+              statusCell = `<span class="status-badge status-completed">Completed</span>`;
+            }
+
+            // Action button - only show View for completed files
+            let actionButton = '';
+            if (isCompleted) {
+              actionButton = `
+                <button class="btn-view" data-task-id="${task.id}">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  View
+                </button>
+              `;
+            }
+
+            return `
+              <tr class="file-row" data-task-id="${task.id}">
+                <td class="checkbox-col">
+                  <input type="checkbox" class="file-checkbox" data-file-name="${task.filename}">
+                </td>
+                <td class="file-name">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                  ${task.filename}
+                </td>
+                <td class="file-pages">${task.page_count || '-'}</td>
+                <td class="file-status">
+                  ${statusCell}
+                </td>
+                <td class="file-action">
+                  ${actionButton}
+                </td>
+                <td class="file-menu-cell">
+                  <button class="file-menu-btn" data-file="${task.filename}" data-task-id="${task.id}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="12" r="2"></circle>
+                      <circle cx="5" cy="12" r="2"></circle>
+                      <circle cx="19" cy="12" r="2"></circle>
+                    </svg>
+                  </button>
+                  <div class="file-context-menu" data-file="${task.filename}" data-task-id="${task.id}">
+                    <button class="context-menu-item" data-action="download">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      <span>Download original</span>
+                    </button>
+                    <button class="context-menu-item context-menu-item-danger" data-action="delete">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Setup "Select All" checkbox functionality
+  const selectAllCheckbox = document.getElementById('selectAllFiles');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+      const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles)');
+      fileCheckboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
+    });
+  }
+
+  // Setup file context menu functionality
+  const menuButtons = document.querySelectorAll('.file-menu-btn');
+  const contextMenus = document.querySelectorAll('.file-context-menu');
+
+  menuButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fileName = button.dataset.file;
+      const menu = document.querySelector(`.file-context-menu[data-file="${fileName}"]`);
+
+      // Close all other menus
+      contextMenus.forEach(m => {
+        if (m !== menu) m.classList.remove('show');
+      });
+
+      // Toggle this menu
+      menu.classList.toggle('show');
+    });
+  });
+
+  // Close menus when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.file-menu-cell')) {
+      contextMenus.forEach(menu => menu.classList.remove('show'));
     }
   });
 
-  // Drag and drop
-  uploadDropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadDropzone.classList.add('dragging');
+  // Handle context menu actions
+  const menuItems = document.querySelectorAll('.context-menu-item');
+  menuItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      const fileName = item.closest('.file-context-menu').dataset.file;
+
+      // Close menu
+      item.closest('.file-context-menu').classList.remove('show');
+
+      // Handle action
+      if (action === 'rename') {
+        const newName = prompt('Enter new file name:', fileName);
+        if (newName && newName !== fileName) {
+          console.log(`Rename: ${fileName} → ${newName}`);
+          // TODO: Implement rename API call
+        }
+      } else if (action === 'download') {
+        console.log(`Download original: ${fileName}`);
+        // TODO: Implement download original API call
+      } else if (action === 'delete') {
+        if (confirm(`Delete "${fileName}"?`)) {
+          console.log(`Delete: ${fileName}`);
+          // TODO: Implement delete API call
+        }
+      }
+    });
+  });
+}
+
+// ==========================================
+// INLINE VIEWER
+// ==========================================
+
+// Mock document data removed - all data now comes from backend API
+const mockDocuments_REMOVED = {
+  'annual-report-2024.pdf': {
+    html: `<h1>Annual Report 2024</h1>
+      <p>This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.</p>
+
+      <h2>Executive Summary</h2>
+      <p>The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.</p>
+      <p>Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.</p>
+
+      <h2>Financial Summary</h2>
+      <p><strong>Revenue:</strong> $1,234,567,890</p>
+      <p><strong>Operating Expenses:</strong> $890,123,456</p>
+      <p><strong>Net Income:</strong> $344,444,434</p>
+      <p><strong>EBITDA:</strong> $456,789,012</p>
+      <p><strong>Total Assets:</strong> $2,345,678,901</p>
+      <p><strong>Shareholder Equity:</strong> $1,567,890,123</p>
+
+      <h2>Market Performance</h2>
+      <p>Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.</p>
+      <p>Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.</p>
+
+      <h2>Operational Highlights</h2>
+      <p>Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.</p>
+      <p>Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.</p>
+
+      <h2>Future Outlook</h2>
+      <p>Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.</p>
+      <p>We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.</p>`,
+    txt: `Annual Report 2024
+
+This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.
+
+Executive Summary
+The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.
+
+Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.
+
+Financial Summary
+Revenue: $1,234,567,890
+Operating Expenses: $890,123,456
+Net Income: $344,444,434
+EBITDA: $456,789,012
+Total Assets: $2,345,678,901
+Shareholder Equity: $1,567,890,123
+
+Market Performance
+Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.
+
+Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.
+
+Operational Highlights
+Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.
+
+Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.
+
+Future Outlook
+Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.
+
+We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.`,
+    json: JSON.stringify({
+      title: 'Annual Report 2024',
+      company_name: 'Acme Corporation',
+      fiscal_year: 2024,
+      report_type: 'annual',
+      report_date: '2024-12-31',
+      pages: 156,
+      revenue: 1234567890,
+      operating_expenses: 890123456,
+      net_income: 344444434,
+      ebitda: 456789012,
+      total_assets: 2345678901,
+      shareholder_equity: 1567890123,
+      stock_price_change: '34%',
+      market_cap: '8.9B',
+      credit_rating: 'AA+',
+      quarterly_dividend: 2.50,
+      dividend_yield: 2.8,
+      earnings_per_share: 12.45,
+      price_to_earnings: 18.2,
+      return_on_equity: 22.0,
+      debt_to_equity: 0.49,
+      current_ratio: 2.1,
+      employee_count: 8450,
+      offices_worldwide: 34,
+      countries_operating: 67,
+      ceo_name: 'Jane Thompson',
+      cfo_name: 'Michael Chen',
+      auditor: 'Ernst & Young LLP',
+      processed_date: '2025-01-15',
+      file_size_mb: 12.8,
+      language: 'English',
+      customer_satisfaction: 94
+    }, null, 2)
+  },
+  'invoice_march.pdf': {
+    html: '<h1>Invoice</h1><p><strong>Invoice #:</strong> INV-2024-003</p><p><strong>Date:</strong> March 1, 2024</p><h2>Line Items</h2><ul><li>Service A - $100.00</li><li>Service B - $56.00</li></ul><p><strong>Total:</strong> $156.00</p>',
+    txt: 'Invoice\n\nInvoice #: INV-2024-003\nDate: March 1, 2024\n\nLine Items\n- Service A - $100.00\n- Service B - $56.00\n\nTotal: $156.00',
+    json: JSON.stringify({
+      invoice_number: 'INV-2024-003',
+      date: '2024-03-01',
+      line_items: [
+        { description: 'Service A', amount: 100.00 },
+        { description: 'Service B', amount: 56.00 }
+      ],
+      total: 156.00,
+      currency: 'USD'
+    }, null, 2)
+  },
+  'meeting-notes.pdf': {
+    html: '<h1>Meeting Notes</h1><p><strong>Date:</strong> January 12, 2025</p><h2>Attendees</h2><ul><li>John Doe</li><li>Jane Smith</li><li>Bob Johnson</li></ul><h2>Agenda</h2><ol><li>Project Updates</li><li>Budget Review</li><li>Next Steps</li></ol>',
+    txt: 'Meeting Notes\n\nDate: January 12, 2025\n\nAttendees\n- John Doe\n- Jane Smith\n- Bob Johnson\n\nAgenda\n1. Project Updates\n2. Budget Review\n3. Next Steps',
+    json: JSON.stringify({
+      meeting_date: '2025-01-12',
+      attendees: ['John Doe', 'Jane Smith', 'Bob Johnson'],
+      agenda: ['Project Updates', 'Budget Review', 'Next Steps'],
+      type: 'meeting_notes'
+    }, null, 2)
+  },
+  'contract_final.pdf': {
+    html: '<h1>Contract Agreement</h1><p>This agreement entered into on January 10, 2025...</p>',
+    txt: 'Contract Agreement\n\nThis agreement entered into on January 10, 2025...',
+    json: JSON.stringify({ type: 'contract', date: '2025-01-10' }, null, 2)
+  },
+  'presentation-slides.pdf': {
+    html: '<h1>Presentation</h1><p>Slide content here...</p>',
+    txt: 'Presentation\n\nSlide content here...',
+    json: JSON.stringify({ type: 'presentation', slides: 67 }, null, 2)
+  }
+};
+
+function toggleInlineViewer(row, fileName) {
+  const table = row.closest('tbody');
+  const existingViewer = table.querySelector('.inline-viewer-row');
+  const viewBtn = row.querySelector('.btn-view');
+
+  // If viewer is already open, close it
+  if (existingViewer) {
+    existingViewer.classList.add('closing');
+    // Remove class from the row
+    const openRow = table.querySelector('.file-row.has-drawer-open');
+
+    // Restore button to "View"
+    if (viewBtn) {
+      viewBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        View
+      `;
+    }
+
+    setTimeout(() => {
+      if (openRow) {
+        openRow.classList.remove('has-drawer-open');
+      }
+      existingViewer.remove();
+    }, 400);
+    return;
+  }
+
+  // Transform button to "Close"
+  if (viewBtn) {
+    viewBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"></path>
+      </svg>
+      Close
+    `;
+  }
+
+  // Add class to current row
+  row.classList.add('has-drawer-open');
+
+  // Get document data from backend API (mock data removed)
+  // This inline viewer is deprecated - use the main viewer instead
+  const docData = {
+    html: '<p>Use the main viewer to see document content</p>',
+    txt: 'Use the main viewer to see document content',
+    json: JSON.stringify({ note: 'Use the main viewer to see document content' }, null, 2)
+  };
+
+  // Create viewer row
+  const viewerRow = document.createElement('tr');
+  viewerRow.className = 'inline-viewer-row';
+  viewerRow.innerHTML = `
+    <td colspan="6">
+      <div class="inline-viewer-slide-wrapper">
+        <div class="inline-viewer">
+          <div class="inline-viewer-header">
+            <h3 class="inline-viewer-title">${fileName}</h3>
+          </div>
+
+          <div class="inline-viewer-tabs">
+            <button class="inline-viewer-tab active" data-format="html">HTML</button>
+            <button class="inline-viewer-tab" data-format="txt">TXT</button>
+            <button class="inline-viewer-tab" data-format="json">JSON</button>
+          </div>
+
+          <div class="inline-viewer-download-toolbar">
+            <button class="btn-download-format" data-download="html">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download HTML
+            </button>
+            <button class="btn-download-format" data-download="txt">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download TXT
+            </button>
+            <button class="btn-download-format" data-download="json">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download JSON
+            </button>
+            <button class="btn-download-all" data-download="all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Download All
+            </button>
+          </div>
+
+          <div class="inline-viewer-content-wrapper">
+            <div class="json-field-selector" style="display: none;">
+              <div class="json-selector-header">
+                <button class="json-preset-dropdown" type="button">
+                  <span class="json-preset-text">Select Preset...</span>
+                  <svg class="json-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </button>
+                <div class="json-preset-menu" style="display: none;"></div>
+              </div>
+              <div class="json-field-list"></div>
+              <div class="json-selector-actions">
+                <input type="text" class="json-preset-name" placeholder="Preset name..." />
+                <button class="btn-save-preset">Save Preset</button>
+              </div>
+            </div>
+            <div class="inline-viewer-content format-html">${docData.html}</div>
+          </div>
+        </div>
+      </div>
+    </td>
+  `;
+
+  // Insert viewer after current row
+  row.after(viewerRow);
+
+  // Setup tab switching
+  const tabs = viewerRow.querySelectorAll('.inline-viewer-tab');
+  const content = viewerRow.querySelector('.inline-viewer-content');
+  const jsonSelector = viewerRow.querySelector('.json-field-selector');
+  const contentWrapper = viewerRow.querySelector('.inline-viewer-content-wrapper');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      const format = tab.dataset.format;
+      content.className = `inline-viewer-content format-${format}`;
+
+      if (format === 'html') {
+        content.innerHTML = docData.html;
+        jsonSelector.style.display = 'none';
+        contentWrapper.classList.remove('has-json-sidebar');
+      } else if (format === 'txt') {
+        content.textContent = docData.txt;
+        jsonSelector.style.display = 'none';
+        contentWrapper.classList.remove('has-json-sidebar');
+      } else if (format === 'json') {
+        jsonSelector.style.display = 'flex';
+        contentWrapper.classList.add('has-json-sidebar');
+        initJsonFieldSelector(viewerRow, docData.json, fileName);
+      }
+    });
   });
 
-  uploadDropzone.addEventListener('dragleave', () => {
-    uploadDropzone.classList.remove('dragging');
+  // Setup download buttons
+  const downloadButtons = viewerRow.querySelectorAll('[data-download]');
+  downloadButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const downloadType = btn.dataset.download;
+
+      if (downloadType === 'all') {
+        // Download all three formats as a ZIP (for now, download individually)
+        downloadFile(docData.html, `${fileName}.html`, 'text/html');
+        setTimeout(() => downloadFile(docData.txt, `${fileName}.txt`, 'text/plain'), 100);
+        setTimeout(() => downloadFile(docData.json, `${fileName}.json`, 'application/json'), 200);
+      } else if (downloadType === 'html') {
+        downloadFile(docData.html, `${fileName}.html`, 'text/html');
+      } else if (downloadType === 'txt') {
+        downloadFile(docData.txt, `${fileName}.txt`, 'text/plain');
+      } else if (downloadType === 'json') {
+        downloadFile(docData.json, `${fileName}.json`, 'application/json');
+      }
+    });
+  });
+}
+
+// Helper function to trigger file download
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ==========================================
+// JSON FIELD SELECTOR & PRESET MANAGEMENT
+// ==========================================
+
+function initJsonFieldSelector(viewerRow, jsonString, fileName) {
+  const jsonData = JSON.parse(jsonString);
+  const fields = extractJsonFields(jsonData);
+  const fieldList = viewerRow.querySelector('.json-field-list');
+  const content = viewerRow.querySelector('.inline-viewer-content');
+  const presetDropdown = viewerRow.querySelector('.json-preset-dropdown');
+  const presetText = viewerRow.querySelector('.json-preset-text');
+  const presetMenu = viewerRow.querySelector('.json-preset-menu');
+  const presetNameInput = viewerRow.querySelector('.json-preset-name');
+  const savePresetBtn = viewerRow.querySelector('.btn-save-preset');
+
+  // Load saved presets
+  loadPresetsIntoMenu(presetMenu);
+
+  // Toggle dropdown menu
+  presetDropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = presetMenu.style.display === 'block';
+    presetMenu.style.display = isOpen ? 'none' : 'block';
+    presetDropdown.classList.toggle('open', !isOpen);
   });
 
-  uploadDropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadDropzone.classList.remove('dragging');
+  // Close dropdown when clicking outside
+  document.addEventListener('click', () => {
+    presetMenu.style.display = 'none';
+    presetDropdown.classList.remove('open');
+  });
 
-    if (e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
+  // Populate field checkboxes
+  fieldList.innerHTML = '';
+  fields.forEach(field => {
+    const label = document.createElement('label');
+    label.className = 'json-field-item';
+    label.innerHTML = `
+      <input type="checkbox" value="${field}" checked />
+      <span>${field}</span>
+    `;
+    fieldList.appendChild(label);
+  });
+
+  // Update JSON when checkboxes change
+  const checkboxes = fieldList.querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', () => {
+      updateFilteredJson(jsonData, checkboxes, content);
+    });
+  });
+
+  // Handle preset selection
+  presetMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.json-preset-item');
+    if (!item) return;
+
+    const presetValue = item.dataset.value;
+    presetText.textContent = item.textContent;
+    presetMenu.style.display = 'none';
+    presetDropdown.classList.remove('open');
+
+    if (presetValue === '__all__') {
+      checkboxes.forEach(cb => cb.checked = true);
+      updateFilteredJson(jsonData, checkboxes, content);
+    } else {
+      const presets = getPresets();
+      const preset = presets.find(p => p.name === presetValue);
+      if (preset) {
+        checkboxes.forEach(cb => {
+          cb.checked = preset.fields.includes(cb.value);
+        });
+        updateFilteredJson(jsonData, checkboxes, content);
+      }
+    }
+  });
+
+  // Save preset button
+  savePresetBtn.addEventListener('click', () => {
+    const presetName = presetNameInput.value.trim();
+    if (!presetName) {
+      alert('Please enter a preset name');
+      return;
+    }
+
+    const selectedFields = Array.from(checkboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.value);
+
+    if (selectedFields.length === 0) {
+      alert('Please select at least one field');
+      return;
+    }
+
+    savePreset(presetName, selectedFields);
+    loadPresetsIntoMenu(presetMenu);
+    presetNameInput.value = '';
+    alert(`Preset "${presetName}" saved!`);
+  });
+
+  // Initial render
+  updateFilteredJson(jsonData, checkboxes, content);
+}
+
+function extractJsonFields(obj) {
+  let fields = [];
+  for (const key in obj) {
+    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+      fields = fields.concat(extractJsonFields(obj[key]));
+    } else {
+      fields.push(key);
+    }
+  }
+  return fields;
+}
+
+function updateFilteredJson(jsonData, checkboxes, contentElement) {
+  const selectedFields = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
+
+  const filteredData = filterJsonByFields(jsonData, selectedFields);
+  contentElement.textContent = JSON.stringify(filteredData, null, 2);
+}
+
+function filterJsonByFields(obj, fields) {
+  const result = {};
+  fields.forEach(field => {
+    if (field in obj) {
+      result[field] = obj[field];
+    }
+  });
+  return result;
+}
+
+function getPresets() {
+  const presetsJson = localStorage.getItem('jsonPresets');
+  return presetsJson ? JSON.parse(presetsJson) : [];
+}
+
+function savePreset(name, fields) {
+  const presets = getPresets();
+  const existingIndex = presets.findIndex(p => p.name === name);
+
+  if (existingIndex >= 0) {
+    presets[existingIndex].fields = fields;
+  } else {
+    presets.push({ name, fields });
+  }
+
+  localStorage.setItem('jsonPresets', JSON.stringify(presets));
+}
+
+function loadPresetsIntoMenu(menu) {
+  const presets = getPresets();
+
+  menu.innerHTML = '';
+
+  // Add default "All Fields" option
+  const allItem = document.createElement('div');
+  allItem.className = 'json-preset-item';
+  allItem.dataset.value = '__all__';
+  allItem.textContent = 'All Fields';
+  menu.appendChild(allItem);
+
+  // Add separator if there are presets
+  if (presets.length > 0) {
+    const separator = document.createElement('div');
+    separator.className = 'json-preset-separator';
+    menu.appendChild(separator);
+  }
+
+  // Add saved presets
+  presets.forEach(preset => {
+    const item = document.createElement('div');
+    item.className = 'json-preset-item';
+    item.dataset.value = preset.name;
+    item.textContent = preset.name;
+    menu.appendChild(item);
+  });
+}
+
+// ==========================================
+// FORMAT SELECTION MODAL
+// ==========================================
+
+let pendingUploadFiles = null;
+let isModalOpen = false;
+
+function initFormatModal() {
+  const modal = document.getElementById('formatModal');
+  const confirmBtn = document.getElementById('formatModalConfirm');
+  const cancelBtn = document.getElementById('formatModalCancel');
+  const saveDefaultCheckbox = document.getElementById('saveAsDefault');
+  const htmlCheckbox = document.getElementById('formatModalHtml');
+  const txtCheckbox = document.getElementById('formatModalTxt');
+  const jsonCheckbox = document.getElementById('formatModalJson');
+
+  // Load saved preferences from localStorage
+  const savedPrefs = localStorage.getItem('defaultFormats');
+  if (savedPrefs) {
+    try {
+      const prefs = JSON.parse(savedPrefs);
+      htmlCheckbox.checked = prefs.html !== false;
+      txtCheckbox.checked = prefs.txt !== false;
+      jsonCheckbox.checked = prefs.json !== false;
+    } catch (e) {
+      console.error('Error loading format preferences:', e);
+    }
+  }
+
+  // Handle Cancel button
+  cancelBtn.addEventListener('click', () => {
+    hideFormatModal();
+    pendingUploadFiles = null;
+    // Clear file input after a delay to prevent re-triggering
+    setTimeout(() => {
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput) fileInput.value = '';
+    }, 100);
+  });
+
+  // Handle Continue button
+  confirmBtn.addEventListener('click', () => {
+    const selectedFormats = {
+      html: htmlCheckbox.checked,
+      txt: txtCheckbox.checked,
+      json: jsonCheckbox.checked
+    };
+
+    // Check if at least one format is selected
+    if (!selectedFormats.html && !selectedFormats.txt && !selectedFormats.json) {
+      alert('Please select at least one output format');
+      return;
+    }
+
+    // Save as default if checkbox is checked
+    if (saveDefaultCheckbox.checked) {
+      localStorage.setItem('defaultFormats', JSON.stringify(selectedFormats));
+    }
+
+    // Hide modal
+    hideFormatModal();
+
+    // Process the upload with selected formats
+    if (pendingUploadFiles) {
+      processFileUpload(pendingUploadFiles, selectedFormats);
+      pendingUploadFiles = null;
+    }
+
+    // Clear file input after a delay to prevent re-triggering
+    setTimeout(() => {
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput) fileInput.value = '';
+    }, 100);
+  });
+
+  // Close modal when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      hideFormatModal();
+      pendingUploadFiles = null;
+      // Clear file input after a delay to prevent re-triggering
+      setTimeout(() => {
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+      }, 100);
     }
   });
 }
 
+function showFormatModal(files) {
+  // Prevent opening if already open
+  if (isModalOpen) {
+    return;
+  }
+
+  pendingUploadFiles = files;
+  const modal = document.getElementById('formatModal');
+  modal.classList.add('show');
+  isModalOpen = true;
+}
+
+function hideFormatModal() {
+  const modal = document.getElementById('formatModal');
+  modal.classList.remove('show');
+  isModalOpen = false;
+}
+
+async function processFileUpload(files, formats) {
+  console.log('Processing upload with formats:', formats);
+  console.log('Files:', files);
+
+  // Upload each file using the existing handleFileUpload function
+  // The backend currently processes all formats (HTML + JSON) by default
+  for (const file of files) {
+    try {
+      await handleFileUpload(file);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      showNotification('Upload failed: ' + error.message, 'error');
+    }
+  }
+}
+
+// ==========================================
+// UPLOAD FUNCTIONALITY
+// ==========================================
+
+function initUpload() {
+  const fileInput = document.getElementById('fileInput');
+
+  // Note: No need to add click handler on label since it has for="fileInput"
+  // The HTML label already handles clicking the file input
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      showFormatModal(e.target.files);
+    }
+  });
+
+  // Drag and drop on the upload zone
+  const uploadZone = document.querySelector('.upload-zone');
+  if (uploadZone) {
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('dragging');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('dragging');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragging');
+
+      if (e.dataTransfer.files.length > 0) {
+        showFormatModal(e.dataTransfer.files);
+      }
+    });
+  }
+}
+
+let selectedFileForUpload = null;
+
+function initEmptyStateUpload() {
+  const circularDropzone = document.getElementById('circularDropzone');
+  const emptyStateFileInput = document.getElementById('emptyStateFileInput');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const selectedFileName = document.getElementById('selectedFileName');
+
+  if (!circularDropzone || !emptyStateFileInput) return;
+
+  // Click to browse
+  circularDropzone.addEventListener('click', () => emptyStateFileInput.click());
+
+  // File selected via input
+  emptyStateFileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      selectedFileForUpload = e.target.files[0];
+      showSelectedFile(selectedFileForUpload);
+    }
+  });
+
+  // Upload button click
+  if (btnUploadCircular) {
+    btnUploadCircular.addEventListener('click', () => {
+      if (selectedFileForUpload) {
+        handleFileUpload(selectedFileForUpload);
+      }
+    });
+  }
+
+  // Drag and drop
+  circularDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    circularDropzone.classList.add('dragging');
+  });
+
+  circularDropzone.addEventListener('dragleave', () => {
+    circularDropzone.classList.remove('dragging');
+  });
+
+  circularDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    circularDropzone.classList.remove('dragging');
+
+    if (e.dataTransfer.files.length > 0) {
+      selectedFileForUpload = e.dataTransfer.files[0];
+      showSelectedFile(selectedFileForUpload);
+    }
+  });
+}
+
+function showSelectedFile(file) {
+  const selectedFileName = document.getElementById('selectedFileName');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const uploadText = document.querySelector('.upload-text');
+  const uploadSubtext = document.querySelector('.upload-subtext');
+  const uploadHint = document.querySelector('.upload-hint');
+
+  if (selectedFileName && btnUploadCircular) {
+    // Hide the upload instructions
+    if (uploadText) uploadText.style.display = 'none';
+    if (uploadSubtext) uploadSubtext.style.display = 'none';
+    if (uploadHint) uploadHint.style.display = 'none';
+
+    // Show selected file name
+    selectedFileName.textContent = file.name;
+    selectedFileName.style.display = 'block';
+
+    // Show upload button
+    btnUploadCircular.style.display = 'flex';
+  }
+}
+
+function updateCircularProgress(percent) {
+  const progressRing = document.getElementById('progressRing');
+  if (!progressRing) return;
+
+  // Circle circumference = 2 * π * r
+  // r = 120 (from the SVG)
+  const radius = 120;
+  const circumference = 2 * Math.PI * radius;
+
+  // Calculate stroke-dashoffset based on percentage
+  const offset = circumference - (percent / 100) * circumference;
+
+  progressRing.style.strokeDasharray = circumference;
+  progressRing.style.strokeDashoffset = offset;
+}
+
+// ==========================================
+// CREDITS CHECK
+// ==========================================
+
+/**
+ * Check if user has sufficient credits before upload
+ * @returns {Promise<boolean>} True if user has credits, false otherwise
+ */
+async function checkCreditsBeforeUpload() {
+  try {
+    // Get current balance from API
+    const response = await fetch(`${API_URL}/api/credits/balance`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch credit balance');
+      // Fail open - allow upload if check fails for better UX
+      return true;
+    }
+
+    const data = await response.json();
+    const balance = data.data.balance || 0;
+
+    if (balance < 1) {
+      // Show insufficient credits modal
+      showInsufficientCreditsModal(balance);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking credits:', error);
+    // Fail open - allow upload if check fails
+    return true;
+  }
+}
+
+/**
+ * Show modal when user has insufficient credits
+ * @param {number} balance - Current credit balance
+ */
+function showInsufficientCreditsModal(balance) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Insufficient Credits</h2>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 1rem;">You need at least 1 credit to upload a document.</p>
+        <p style="margin-bottom: 1rem;">Current balance: <strong>${balance} credits</strong></p>
+        <p style="color: var(--gray-600); font-size: 0.875rem;">Each page costs 1 credit to process.</p>
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" onclick="window.location.href='settings.html#credits'">Buy Credits</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Close on overlay click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+
+  // Close on ESC key
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
 async function handleFileUpload(file) {
-  const status = document.getElementById('uploadStatus');
-  status.className = 'upload-status visible uploading';
-  status.textContent = `Uploading ${file.name}...`;
+  // Check credits before upload
+  const hasCredits = await checkCreditsBeforeUpload();
+  if (!hasCredits) {
+    return; // Stop upload if insufficient credits
+  }
+
+  const circularDropzone = document.getElementById('circularDropzone');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+  const progressRing = document.getElementById('progressRing');
+
+  // Show uploading state
+  if (circularDropzone) circularDropzone.classList.add('uploading');
+  if (btnUploadCircular) btnUploadCircular.style.display = 'none';
 
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('userId', USER_ID);
 
-    const response = await fetch(`${API_URL}/api/tasks`, {
-      method: 'POST',
-      body: formData,
+    // Create XMLHttpRequest for progress tracking
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = (e.loaded / e.total) * 100;
+        updateCircularProgress(percentComplete);
+      }
     });
 
-    const data = await response.json();
+    // Handle completion
+    const uploadPromise = new Promise((resolve, reject) => {
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`Upload failed: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed'));
+      });
+    });
+
+    xhr.open('POST', `${API_URL}/api/tasks`);
+    xhr.send(formData);
+
+    const data = await uploadPromise;
 
     if (data.success) {
       const taskId = data.data.taskId;
+
+      // Update credit balance if provided in response
+      if (data.data.creditsRemaining !== null && data.data.creditsRemaining !== undefined) {
+        console.log(`✓ Credits deducted. Remaining balance: ${data.data.creditsRemaining}`);
+        // Refresh sidebar credits display
+        if (typeof SidebarNav !== 'undefined') {
+          SidebarNav.loadCredits();
+        }
+      }
 
       // If a folder is selected (not "All Documents"), move the task to that folder
       if (currentFolderId && currentFolderId !== 'all') {
@@ -480,41 +2127,50 @@ async function handleFileUpload(file) {
         console.log('📁 No folder selected, task added to All Documents');
       }
 
-      status.className = 'upload-status visible success';
-      status.textContent = `✓ ${file.name} uploaded successfully! Processing...`;
+      // Complete the progress ring
+      updateCircularProgress(100);
 
-      // Clear file input
-      document.getElementById('fileInput').value = '';
-
-      // Close modal
-      const uploadModal = document.getElementById('uploadModal');
-      if (uploadModal) {
-        setTimeout(() => {
-          uploadModal.classList.remove('active');
-        }, 1000);
-      }
+      // Clear the selected file
+      selectedFileForUpload = null;
 
       // Reload tasks and show viewer for new task
       setTimeout(async () => {
         await loadTasks();
-        status.classList.remove('visible');
 
         // Find the newly uploaded task and show it
         const newTask = tasks.find(t => t.id === taskId);
         if (newTask) {
           showViewer(newTask);
         }
-      }, 1500);
+      }, 500);
     } else {
       throw new Error(data.error || 'Upload failed');
     }
   } catch (error) {
-    status.className = 'upload-status visible error';
-    status.textContent = `✗ Upload failed: ${error.message}`;
+    console.error('Upload failed:', error);
 
+    // Show error state
+    if (circularDropzone) {
+      circularDropzone.classList.remove('uploading');
+      circularDropzone.classList.add('error');
+    }
+
+    // Reset progress
+    updateCircularProgress(0);
+
+    // Show error message
+    const selectedFileName = document.getElementById('selectedFileName');
+    if (selectedFileName) {
+      selectedFileName.textContent = `✗ Upload failed: ${error.message}`;
+      selectedFileName.style.color = '#ef4444';
+    }
+
+    // Reset after 3 seconds
     setTimeout(() => {
-      status.classList.remove('visible');
-    }, 5000);
+      if (circularDropzone) circularDropzone.classList.remove('error');
+      selectedFileForUpload = null;
+      renderFilesList(); // Refresh to show clean state
+    }, 3000);
   }
 }
 
@@ -532,12 +2188,7 @@ function initFolders() {
   // New folder button
   if (newFolderBtn) {
     newFolderBtn.addEventListener('click', () => {
-      isEditingFolder = false;
-      editingFolderId = null;
-      document.getElementById('folderForm').reset();
-      document.getElementById('folderModalTitle').textContent = 'New Folder';
-      document.getElementById('saveFolderBtn').textContent = 'Create Folder';
-      newFolderModal.classList.add('active');
+      openNewProjectModal();
     });
   }
 
@@ -580,7 +2231,29 @@ function initFolders() {
       await handleFolderSubmit();
     });
   }
+
+  // Save folder button (also handles form submission)
+  const saveFolderBtn = document.getElementById('saveFolderBtn');
+  if (saveFolderBtn) {
+    saveFolderBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await handleFolderSubmit();
+    });
+  }
 }
+
+// Open new project modal (called from sidebar-nav.js)
+function openNewProjectModal() {
+  isEditingFolder = false;
+  editingFolderId = null;
+  document.getElementById('folderForm').reset();
+  document.getElementById('folderModalTitle').textContent = 'Create New Project';
+  document.getElementById('saveFolderBtn').textContent = 'Create Project';
+  document.getElementById('newFolderModal').classList.add('active');
+}
+
+// Make it globally accessible
+window.openNewProjectModal = openNewProjectModal;
 
 async function loadFolders() {
   try {
@@ -592,6 +2265,10 @@ async function loadFolders() {
 
     if (data.success) {
       folders = data.folders;
+
+      // Cache projects for instant loading on other pages
+      localStorage.setItem('sidebarProjects', JSON.stringify(folders));
+
       renderFolders();
       updateFolderCounts();
       console.log(`✓ Folders loaded: ${folders.length} total`);
@@ -602,6 +2279,16 @@ async function loadFolders() {
 }
 
 function renderFolders() {
+  // Sidebar projects are managed by sidebar-nav.js
+  // Just notify it to update if needed
+  if (typeof SidebarNav !== 'undefined' && SidebarNav.renderProjects) {
+    SidebarNav.renderProjects(folders);
+  }
+
+  // Setup click handlers for project items (for app.js selectFolder functionality)
+  setupProjectClickHandlers();
+
+  // Render Folders List (existing code)
   const foldersList = document.getElementById('foldersList');
   if (!foldersList) return;
 
@@ -709,21 +2396,44 @@ function renderFolders() {
         m.classList.remove('show');
       });
     }
+    if (!e.target.closest('.project-item-wrapper')) {
+      document.querySelectorAll('.project-context-menu.active').forEach(m => {
+        m.classList.remove('active');
+      });
+    }
   });
 
   // Make folder items drop targets for drag and drop
   enableFolderDropTargets();
 }
 
+// Setup click handlers for project items in sidebar (app.js specific)
+function setupProjectClickHandlers() {
+  document.querySelectorAll('.project-item[data-project-id]').forEach(link => {
+    // Remove existing listeners to avoid duplicates
+    const newLink = link.cloneNode(true);
+    link.parentNode.replaceChild(newLink, link);
+
+    newLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const projectId = newLink.dataset.projectId;
+      selectFolder(projectId);
+    });
+  });
+}
+
 function selectFolder(folderId) {
   currentFolderId = folderId;
+
+  // Save to localStorage so it persists on reload
+  localStorage.setItem('selectedProject', folderId);
 
   // Close any open menus
   document.querySelectorAll('.folder-menu.show').forEach(m => {
     m.classList.remove('show');
   });
 
-  // Update active state
+  // Update active state on folder items
   document.querySelectorAll('.folder-item').forEach(item => {
     item.classList.remove('active');
   });
@@ -733,8 +2443,29 @@ function selectFolder(folderId) {
     selectedFolder.classList.add('active');
   }
 
+  // Update active state on project items in sidebar
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  const selectedProject = document.querySelector(`.project-item[data-project-id="${folderId}"]`);
+  if (selectedProject) {
+    selectedProject.classList.add('active');
+  }
+
+  // Update page heading with folder name
+  const projectNameHeader = document.getElementById('projectNameHeader');
+  if (projectNameHeader) {
+    if (folderId === 'all') {
+      projectNameHeader.textContent = 'All Files';
+    } else {
+      const folder = folders.find(f => f.id === folderId);
+      projectNameHeader.textContent = folder ? folder.name : 'Documents';
+    }
+  }
+
   // Filter tasks in main area
-  renderDocumentGrid();
+  renderFilesList();
 
   // If in viewer mode (viewing a document), show folder documents list in sidebar
   const viewerView = document.getElementById('viewerView');
@@ -742,7 +2473,7 @@ function selectFolder(folderId) {
     showFolderDocumentsListInViewer(folderId);
   }
 
-  console.log(`📁 Selected folder: ${folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name}`);
+  console.log(`📁 Selected folder: ${folderId === 'all' ? 'All Files' : folders.find(f => f.id === folderId)?.name}`);
 }
 
 function showFolderDocumentsListInViewer(folderId) {
@@ -750,11 +2481,11 @@ function showFolderDocumentsListInViewer(folderId) {
   const backBtn = document.getElementById('backToFoldersBtn');
   const foldersList = document.getElementById('foldersList');
 
-  // Get folder info or use "All Documents"
-  let folderName = 'All Documents';
+  // Get folder info or use "All Files"
+  let folderName = 'All Files';
   let folderColor = null;
 
-  if (folderId) {
+  if (folderId && folderId !== 'all') {
     const folder = folders.find(f => f.id === folderId);
     if (folder) {
       folderName = folder.name;
@@ -897,15 +2628,25 @@ async function handleFolderSubmit() {
       // If editing, refresh tasks to update folder names
       if (isEditingFolder) {
         await loadTasks();
+
+        // If we're editing the currently selected folder, update the header
+        if (editingFolderId === currentFolderId) {
+          const projectNameHeader = document.getElementById('projectNameHeader');
+          if (projectNameHeader) {
+            projectNameHeader.textContent = name;
+          }
+        }
       }
 
-      console.log(`✓ Folder ${isEditingFolder ? 'updated' : 'created'}: ${name}`);
+      const action = isEditingFolder ? 'updated' : 'created';
+      console.log(`✓ Folder ${action}: ${name}`);
+      showToast(`Folder ${action}: ${name}`, 'success');
     } else {
-      alert(data.error || 'Failed to save folder');
+      showToast(data.error || 'Failed to save folder', 'error');
     }
   } catch (error) {
     console.error('Failed to save folder:', error);
-    alert('Failed to save folder: ' + error.message);
+    showToast('Failed to save folder: ' + error.message, 'error');
   } finally {
     saveFolderBtn.disabled = false;
     saveFolderBtn.textContent = isEditingFolder ? 'Update Folder' : 'Create Folder';
@@ -927,43 +2668,86 @@ function editFolder(folderId) {
   document.getElementById('newFolderModal').classList.add('active');
 }
 
+// Make functions globally accessible for sidebar
+window.editFolder = editFolder;
+
+// Show delete confirmation modal
+function showDeleteConfirmation(folderName, taskCount, onConfirm) {
+  const modal = document.getElementById('deleteConfirmModal');
+  const title = document.getElementById('deleteConfirmTitle');
+  const message = document.getElementById('deleteConfirmMessage');
+  const confirmBtn = document.getElementById('confirmDeleteBtn');
+  const cancelBtn = document.getElementById('cancelDeleteBtn');
+
+  title.textContent = `Delete "${folderName}"?`;
+  message.textContent = taskCount > 0
+    ? `${taskCount} document(s) will be moved to "All Documents".`
+    : 'This project will be deleted permanently.';
+
+  modal.classList.add('show');
+
+  // Remove any existing listeners
+  const newConfirmBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+  const newCancelBtn = cancelBtn.cloneNode(true);
+  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+  // Add new listeners
+  newConfirmBtn.addEventListener('click', () => {
+    modal.classList.remove('show');
+    onConfirm();
+  });
+
+  newCancelBtn.addEventListener('click', () => {
+    modal.classList.remove('show');
+  });
+
+  // Close on overlay click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+    }
+  });
+}
+
 async function deleteFolder(folderId) {
   const folder = folders.find(f => f.id === folderId);
   if (!folder) return;
 
   const taskCount = tasks.filter(task => task.folder_id === folderId).length;
-  const message = taskCount > 0
-    ? `Delete "${folder.name}"? ${taskCount} document(s) will be moved to "All Documents".`
-    : `Delete "${folder.name}"?`;
 
-  if (!confirm(message)) return;
+  showDeleteConfirmation(folder.name, taskCount, async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/folders/${folderId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
 
-  try {
-    const response = await fetch(`${API_URL}/api/folders/${folderId}`, {
-      method: 'DELETE',
-      credentials: 'include'
-    });
+      const data = await response.json();
 
-    const data = await response.json();
+      if (data.success) {
+        // If we were viewing this folder, switch to "All Documents"
+        if (currentFolderId === folderId) {
+          selectFolder('all');
+        }
 
-    if (data.success) {
-      // If we were viewing this folder, switch to "All Documents"
-      if (currentFolderId === folderId) {
-        selectFolder('all');
+        await loadFolders();
+        await loadTasks(); // Refresh to show tasks moved to "All Documents"
+
+        console.log(`✓ Folder deleted: ${folder.name}`);
+        showToast(`Project deleted: ${folder.name}`, 'success');
+      } else {
+        showToast(data.error || 'Failed to delete project', 'error');
       }
-
-      await loadFolders();
-      await loadTasks(); // Refresh to show tasks moved to "All Documents"
-
-      console.log(`✓ Folder deleted: ${folder.name}`);
-    } else {
-      alert(data.error || 'Failed to delete folder');
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      showToast('Failed to delete project: ' + error.message, 'error');
     }
-  } catch (error) {
-    console.error('Failed to delete folder:', error);
-    alert('Failed to delete folder: ' + error.message);
-  }
+  });
 }
+
+// Make deleteFolder globally accessible for sidebar
+window.deleteFolder = deleteFolder;
 
 // Drag and drop for moving tasks to folders
 function enableFolderDropTargets() {
@@ -1011,15 +2795,44 @@ async function moveTaskToFolder(taskId, folderId) {
       await loadTasks();
       updateFolderCounts();
 
-      const folder = folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name;
-      console.log(`✓ Task moved to: ${folder}`);
+      const folderName = folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name;
+      console.log(`✓ Task moved to: ${folderName}`);
+      showToast(`Moved to ${folderName}`, 'success');
     } else {
-      alert(data.error || 'Failed to move task');
+      showToast(data.error || 'Failed to move file', 'error');
     }
   } catch (error) {
     console.error('Failed to move task:', error);
-    alert('Failed to move task: ' + error.message);
+    showToast('Failed to move file: ' + error.message, 'error');
   }
+}
+
+// ==========================================
+// TOAST NOTIFICATIONS
+// ==========================================
+
+/**
+ * Show toast notification
+ * @param {string} message - Message to display
+ * @param {string} type - Type: 'success', 'error', 'info'
+ */
+function showToast(message, type = 'info') {
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  // Add to page
+  document.body.appendChild(toast);
+
+  // Animate in
+  setTimeout(() => toast.classList.add('show'), 10);
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // ==========================================
@@ -1048,7 +2861,8 @@ async function loadTasks() {
         tasks = data.data.tasks;
         updateStats(data.data.stats);
         updateFolderCounts();
-        renderDocumentGrid();
+        // Don't render files list here - wait for folder selection
+        // renderFilesList();
 
         // If viewing a task, update it
         if (currentTask) {
@@ -1092,7 +2906,7 @@ async function loadTasksWithoutReload() {
     if (data.success) {
       tasks = data.data.tasks;
       updateStats(data.data.stats);
-      renderDocumentGrid();
+      renderFilesList();
 
       // Update currentTask metadata silently (no viewer reload)
       if (currentTask) {
@@ -1109,11 +2923,14 @@ async function loadTasksWithoutReload() {
 }
 
 function updateStats(stats) {
-  // Inline stats (dashboard)
-  document.getElementById('statTotalInline').textContent = stats.total || 0;
-  document.getElementById('statProcessingInline').textContent =
-    (parseInt(stats.pending || 0) + parseInt(stats.processing || 0));
-  document.getElementById('statCompletedInline').textContent = stats.completed || 0;
+  // Inline stats (dashboard) - only update if elements exist
+  const statTotal = document.getElementById('statTotalInline');
+  const statProcessing = document.getElementById('statProcessingInline');
+  const statCompleted = document.getElementById('statCompletedInline');
+
+  if (statTotal) statTotal.textContent = stats.total || 0;
+  if (statProcessing) statProcessing.textContent = (parseInt(stats.pending || 0) + parseInt(stats.processing || 0));
+  if (statCompleted) statCompleted.textContent = stats.completed || 0;
 }
 
 function renderDocumentGrid() {
@@ -1126,24 +2943,49 @@ function renderDocumentGrid() {
   }
 
   if (filteredTasks.length === 0) {
-    const emptyMessage = currentFolderId === 'all'
-      ? 'No documents yet'
-      : 'No documents in this folder';
-
-    const emptySubtext = currentFolderId === 'all'
-      ? 'Upload your first document to get started'
-      : 'Drag and drop documents here to organize them';
-
-    grid.innerHTML = `
-      <div class="empty-state">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-        </svg>
-        <p>${emptyMessage}</p>
-        <small>${emptySubtext}</small>
-      </div>
-    `;
+    if (currentFolderId === 'all') {
+      // Show upload dropzone for empty "All Documents" view
+      grid.innerHTML = `
+        <div class="empty-state" id="emptyState">
+          <div class="circular-upload-container">
+            <div class="circular-dropzone" id="circularDropzone">
+              <input type="file" id="emptyStateFileInput" accept=".pdf,image/*" hidden>
+              <svg class="circular-progress-ring" width="280" height="280">
+                <circle class="progress-ring-bg" cx="140" cy="140" r="120" />
+                <circle class="progress-ring-fill" cx="140" cy="140" r="120" id="progressRing" />
+              </svg>
+              <div class="dropzone-content">
+                <svg class="upload-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <p class="upload-text">Drop your file here</p>
+                <p class="upload-subtext">or click to browse</p>
+                <small class="upload-hint">PDF, PNG, JPG (Max 50MB)</small>
+                <div class="selected-file-name" id="selectedFileName" style="display: none;"></div>
+              </div>
+            </div>
+            <button class="btn-upload-circular" id="btnUploadCircular" style="display: none;">
+              Upload
+            </button>
+          </div>
+        </div>
+      `;
+      // Re-initialize upload functionality
+      initEmptyStateUpload();
+    } else {
+      // Show simple empty message for specific folders
+      grid.innerHTML = `
+        <div class="empty-state">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <p>No documents in ${folders.find(f => f.id === currentFolderId)?.name || 'this folder'}</p>
+          <small>Upload files or drag existing files into this folder to organize them</small>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -1757,6 +3599,9 @@ function initWebSocket() {
           handleTaskUpdate(message.data);
         } else if (message.type === 'db_change') {
           handleDatabaseChange(message.data);
+        } else if (message.type === 'credit_update') {
+          // Handle real-time credit balance updates
+          handleCreditUpdate(message.data);
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
@@ -1786,7 +3631,7 @@ function handleTaskUpdate(data) {
 
   if (taskIndex !== -1) {
     tasks[taskIndex].status = data.status;
-    renderDocumentGrid();
+    renderFilesList();
   }
 
   // Reload full data
@@ -1804,6 +3649,23 @@ function handleDatabaseChange(data) {
   } else {
     // Normal flow: reload everything
     loadTasks();
+  }
+}
+
+/**
+ * Handle real-time credit balance updates via WebSocket
+ */
+function handleCreditUpdate(data) {
+  console.log('💰 Credit update received:', data);
+
+  // Refresh credit balance in sidebar
+  if (typeof SidebarNav !== 'undefined') {
+    SidebarNav.loadCredits();
+  }
+
+  // Show notification if provided
+  if (data.message) {
+    console.log(data.message);
   }
 }
 
@@ -1923,6 +3785,10 @@ async function checkAuth() {
       if (userInfo) {
         userInfo.textContent = `${user.username} (${user.email})`;
       }
+
+      // Show content after successful authentication
+      document.body.classList.add('auth-checked');
+
       return true;
     }
 
