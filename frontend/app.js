@@ -24,7 +24,7 @@ let loadTasksTimeout = null;
 
 // Folder state
 let folders = [];
-let currentFolderId = 'all'; // 'all' or folder UUID
+let currentFolderId = null; // null (not selected yet), 'all', or folder UUID
 let isEditingFolder = false;
 let editingFolderId = null;
 
@@ -42,12 +42,39 @@ const pdfCache = new Map(); // taskId -> { blobUrl: string, timestamp: number }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // Check for OAuth success in URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const loginSuccess = urlParams.get('login');
+  const linkedSuccess = urlParams.get('linked');
+
+  if (loginSuccess === 'success') {
+    // Show success message
+    showNotification('Successfully signed in with Google!', 'success');
+
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  if (linkedSuccess === 'success') {
+    // Show success message for account linking
+    showNotification('Google account linked successfully!', 'success');
+
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
   // Check if user is authenticated
+  console.log('🔒 Checking authentication...');
   const isAuthenticated = await checkAuth();
+  console.log('🔒 Authentication result:', isAuthenticated);
+
   if (!isAuthenticated) {
+    console.log('❌ Not authenticated, redirecting to auth page');
     window.location.href = 'auth.html';
     return;
   }
+
+  console.log('✅ Authenticated, loading dashboard...');
 
   // Initialize inactivity tracking (15 minute timeout)
   initInactivityTracking();
@@ -60,37 +87,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadFolders();
   await loadTasks();
 
-  // Check if a project was selected from the sidebar
-  const selectedProject = localStorage.getItem('selectedProject');
+  // Check URL parameters for project selection (reuse urlParams from above)
+  const projectParam = urlParams.get('project');
+
+  // Check if a project was selected from the sidebar or URL
+  const selectedProject = projectParam || localStorage.getItem('selectedProject');
   if (selectedProject) {
     // Clear the flag
     localStorage.removeItem('selectedProject');
 
     console.log('📁 Auto-selecting project from sidebar:', selectedProject);
 
-    // Wait a bit for tasks to load, then show first document in viewer
+    // Wait a bit for tasks to load, then select folder
     setTimeout(() => {
       // Check if this project/folder exists
       const folderExists = folders.some(f => f.id === selectedProject);
 
-      let projectTasks;
       if (folderExists) {
         // Select the specific folder
         selectFolder(selectedProject);
-        projectTasks = tasks.filter(t => t.folder_id === selectedProject);
       } else {
         // Folder doesn't exist, show all documents instead
         console.log('⚠️ Folder not found, showing all documents');
         selectFolder('all');
-        projectTasks = tasks;
       }
-
-      // Show first document in viewer if available
-      if (projectTasks.length > 0) {
-        console.log('📄 Auto-opening first document in viewer');
-        showViewer(projectTasks[0]);
+    }, 500);
+  } else {
+    // No project selected, auto-select first folder in list
+    setTimeout(() => {
+      if (folders.length > 0) {
+        console.log('📁 Auto-selecting first folder:', folders[0].name);
+        selectFolder(folders[0].id);
       } else {
-        console.log('📭 No documents available in this project');
+        // No folders, select "All Documents"
+        selectFolder('all');
       }
     }, 500);
   }
@@ -144,17 +174,338 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('downloadResultBtn')?.addEventListener('click', () => downloadResult(currentTask.id));
   document.getElementById('downloadOriginalBtn')?.addEventListener('click', () => downloadOriginal(currentTask.id));
 
-  // Render files list
-  renderFilesList();
+  // Don't render files list here - wait for folder selection
+  // renderFilesList();
 
-  // Handle View button clicks - expand inline viewer
-  document.addEventListener('click', (e) => {
+  // Function to open a task in inline viewer dropdown
+  async function openTaskInViewer(taskId) {
+    try {
+      console.log('Opening task in viewer, taskId:', taskId);
+
+      // Find the row for this task
+      const row = document.querySelector(`tr.file-row[data-task-id="${taskId}"]`);
+      if (!row) {
+        console.error('Row not found for taskId:', taskId);
+        return;
+      }
+
+      // Fetch the task details
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+        credentials: 'include',
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch task');
+      }
+
+      const data = await response.json();
+      // The task is nested in data.data.task (not just data.data)
+      const task = data.data?.task || data.data;
+
+      console.log('Task fetched:', task);
+      console.log('Task ID:', task.id);
+
+      // Set as current task
+      currentTask = task;
+
+      // Show inline viewer for this row
+      await showInlineViewer(row, task);
+
+    } catch (error) {
+      console.error('Error opening task in viewer:', error);
+      showToast('Failed to load document', 'error');
+    }
+  }
+
+  // Function to show inline viewer below a row
+  async function showInlineViewer(row, task) {
+    const table = row.closest('tbody');
+    const existingViewer = table.querySelector('.inline-viewer-row');
+
+    // Close existing viewer if open
+    if (existingViewer) {
+      existingViewer.remove();
+      const allRows = table.querySelectorAll('.file-row');
+      allRows.forEach(r => {
+        r.classList.remove('viewer-active');
+        // Revert Close button back to View button
+        const viewBtn = r.querySelector('.btn-view, .btn-close-viewer');
+        if (viewBtn && viewBtn.classList.contains('btn-close-viewer')) {
+          viewBtn.className = 'btn-view';
+          viewBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            View
+          `;
+        }
+      });
+    }
+
+    // Mark this row as active
+    row.classList.add('viewer-active');
+
+    // Change View button to Close button
+    const viewBtn = row.querySelector('.btn-view');
+    if (viewBtn) {
+      viewBtn.className = 'btn-close-viewer';
+      viewBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"></path>
+        </svg>
+        Close
+      `;
+    }
+
+    // Create inline viewer row
+    const viewerRow = document.createElement('tr');
+    viewerRow.className = 'inline-viewer-row';
+    viewerRow.innerHTML = `
+      <td colspan="6">
+        <div class="inline-viewer">
+          <div class="inline-viewer-tabs">
+            <button class="inline-viewer-tab active" data-format="html">HTML</button>
+            <button class="inline-viewer-tab" data-format="txt">TXT</button>
+            <button class="inline-viewer-tab" data-format="json">JSON</button>
+          </div>
+          <div class="inline-viewer-download-toolbar">
+            <button class="btn-download-format" data-download="html">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download HTML
+            </button>
+            <button class="btn-download-format" data-download="txt">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download TXT
+            </button>
+            <button class="btn-download-format" data-download="json">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download JSON
+            </button>
+            <button class="btn-download-all" data-download="all">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download All
+            </button>
+          </div>
+          <div class="inline-viewer-content format-html" data-task-id="${task.id}">
+            <p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>
+          </div>
+        </div>
+      </td>
+    `;
+
+    // Insert after current row
+    row.after(viewerRow);
+
+    // Setup tab switching
+    const tabs = viewerRow.querySelectorAll('.inline-viewer-tab');
+    const content = viewerRow.querySelector('.inline-viewer-content');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const format = tab.dataset.format;
+
+        // Store current scroll position before any DOM changes
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        content.className = `inline-viewer-content format-${format}`;
+
+        // Use requestAnimationFrame to ensure scroll position is maintained
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+        });
+
+        await loadInlineViewerContent(task.id, format, content);
+
+        // Restore scroll position again after content loads
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+        });
+      });
+    });
+
+    // Setup download buttons
+    const downloadBtns = viewerRow.querySelectorAll('.btn-download-format, .btn-download-all');
+    downloadBtns.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const downloadType = btn.dataset.download;
+        if (downloadType === 'all') {
+          await downloadAllFormats(task);
+        } else {
+          await downloadFormat(task, downloadType);
+        }
+      });
+    });
+
+    // Load HTML by default
+    await loadInlineViewerContent(task.id, 'html', content);
+  }
+
+  // Function to close inline viewer
+  function closeInlineViewer(row) {
+    const table = row.closest('tbody');
+    const viewerRow = table.querySelector('.inline-viewer-row');
+
+    if (viewerRow) {
+      viewerRow.remove();
+    }
+
+    row.classList.remove('viewer-active');
+
+    // Revert Close button back to View button
+    const closeBtn = row.querySelector('.btn-close-viewer');
+    if (closeBtn) {
+      closeBtn.className = 'btn-view';
+      closeBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        View
+      `;
+    }
+  }
+
+  // Load content for inline viewer
+  async function loadInlineViewerContent(taskId, format, contentElement) {
+    try {
+      contentElement.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>';
+
+      if (format === 'html') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/preview`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load HTML');
+
+        const htmlContent = await response.text();
+
+        // Create iframe and set srcdoc directly to avoid escaping issues
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width: 100%; height: 600px; border: none; background: white; border-radius: 4px;';
+        iframe.sandbox = 'allow-same-origin allow-scripts';
+        iframe.srcdoc = htmlContent;
+
+        contentElement.innerHTML = '';
+        contentElement.appendChild(iframe);
+      } else if (format === 'txt') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/txt`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load text');
+
+        const txtContent = await response.text();
+        contentElement.textContent = txtContent;
+      } else if (format === 'json') {
+        const response = await fetch(`${API_URL}/api/tasks/${taskId}/json`, {
+          headers: { 'x-user-id': USER_ID }
+        });
+
+        if (!response.ok) throw new Error('Failed to load JSON');
+
+        const jsonData = await response.json();
+        contentElement.textContent = JSON.stringify(jsonData, null, 2);
+      }
+    } catch (error) {
+      console.error(`Error loading ${format}:`, error);
+      contentElement.innerHTML = `<p style="color: #ef4444; text-align: center; padding: 2rem;">Failed to load ${format.toUpperCase()} content</p>`;
+    }
+  }
+
+  // Download format helper
+  async function downloadFormat(task, format) {
+    const taskId = task.id;
+    const filename = task.filename.replace(/\.[^/.]+$/, '');
+
+    try {
+      let url, downloadFilename;
+
+      if (format === 'html') {
+        url = `${API_URL}/api/tasks/${taskId}/result`;
+        downloadFilename = `${filename}_result.pdf`;
+      } else if (format === 'txt') {
+        url = `${API_URL}/api/tasks/${taskId}/txt`;
+        downloadFilename = `${filename}_extracted.txt`;
+      } else if (format === 'json') {
+        url = `${API_URL}/api/tasks/${taskId}/json`;
+        downloadFilename = `${filename}_data.json`;
+      }
+
+      const response = await fetch(url, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = downloadFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+
+      showToast(`Downloaded ${format.toUpperCase()}`, 'success');
+    } catch (error) {
+      console.error(`Error downloading ${format}:`, error);
+      showToast(`Failed to download ${format.toUpperCase()}`, 'error');
+    }
+  }
+
+  // Download all formats
+  async function downloadAllFormats(task) {
+    await downloadFormat(task, 'html');
+    setTimeout(() => downloadFormat(task, 'txt'), 200);
+    setTimeout(() => downloadFormat(task, 'json'), 400);
+    showToast('Downloading all formats...', 'info');
+  }
+
+  // Handle View/Close button clicks - open or close task in viewer
+  document.addEventListener('click', async (e) => {
+    // Handle View button - open viewer
     const viewBtn = e.target.closest('.btn-view');
     if (viewBtn) {
       e.stopPropagation();
-      const row = viewBtn.closest('.file-row');
-      const fileName = row.querySelector('.file-name').textContent.trim();
-      toggleInlineViewer(row, fileName);
+      const taskId = viewBtn.dataset.taskId;
+      if (taskId) {
+        await openTaskInViewer(taskId);
+      }
+      return;
+    }
+
+    // Handle Close button - close viewer
+    const closeBtn = e.target.closest('.btn-close-viewer');
+    if (closeBtn) {
+      e.stopPropagation();
+      const row = closeBtn.closest('.file-row');
+      if (row) {
+        closeInlineViewer(row);
+      }
     }
   });
 
@@ -186,13 +537,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('viewMode', 'list');
     });
 
-    // Restore saved view mode
-    const savedView = localStorage.getItem('viewMode');
-    if (savedView === 'list') {
-      documentGrid.classList.add('list-view');
-      listViewBtn.classList.add('active');
-      gridViewBtn.classList.remove('active');
-    }
+    // Always use list view
+    documentGrid.classList.add('list-view');
+    listViewBtn.classList.add('active');
+    gridViewBtn.classList.remove('active');
+    localStorage.setItem('viewMode', 'list');
   }
 
   // Extracted text panel toggle
@@ -209,7 +558,195 @@ document.addEventListener('DOMContentLoaded', async () => {
       panel.classList.add('hidden');
     }
   });
+
+  // Setup main document viewer
+  setupMainDocumentViewer();
+  setupMainViewerDownloadButtons();
 });
+
+// ==========================================
+// MAIN DOCUMENT VIEWER - TAB SWITCHING
+// ==========================================
+
+function setupMainDocumentViewer() {
+  const tabs = document.querySelectorAll('#mainTabHtml, #mainTabTxt, #mainTabJson');
+  const content = document.getElementById('mainViewerContent');
+  const contentWrapper = document.getElementById('mainViewerContentWrapper');
+  const jsonSelector = document.getElementById('mainJsonSelector');
+
+  if (!tabs.length || !content) return;
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', async () => {
+      const format = tab.dataset.format;
+
+      // Update active tab
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Update content class
+      content.className = `inline-viewer-content format-${format}`;
+
+      // Load content for selected format
+      await loadMainViewerContent(format);
+    });
+  });
+}
+
+async function loadMainViewerContent(format) {
+  const content = document.getElementById('mainViewerContent');
+  const contentWrapper = document.getElementById('mainViewerContentWrapper');
+  const jsonSelector = document.getElementById('mainJsonSelector');
+
+  if (!currentTask || !currentTask.id) {
+    content.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">No document selected</p>';
+    return;
+  }
+
+  const taskId = currentTask.id;
+
+  try {
+    if (format === 'html') {
+      // Hide JSON selector
+      jsonSelector.style.display = 'none';
+      contentWrapper.classList.remove('has-json-sidebar');
+
+      // Load HTML preview in iframe
+      content.innerHTML = `
+        <iframe
+          id="htmlPreviewFrame"
+          style="width: 100%; height: 600px; border: none; background: white; border-radius: 4px;"
+          sandbox="allow-same-origin"
+        ></iframe>
+      `;
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/preview`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load HTML');
+
+      const htmlContent = await response.text();
+      const iframe = document.getElementById('htmlPreviewFrame');
+      iframe.srcdoc = htmlContent;
+
+    } else if (format === 'txt') {
+      // Hide JSON selector
+      jsonSelector.style.display = 'none';
+      contentWrapper.classList.remove('has-json-sidebar');
+
+      // Load TXT content
+      content.textContent = 'Loading text...';
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/txt`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load text');
+
+      const txtContent = await response.text();
+      content.textContent = txtContent;
+
+    } else if (format === 'json') {
+      // Show JSON selector
+      jsonSelector.style.display = 'flex';
+      contentWrapper.classList.add('has-json-sidebar');
+
+      // Load JSON content
+      content.textContent = 'Loading JSON...';
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/json`, {
+        headers: { 'x-user-id': USER_ID }
+      });
+
+      if (!response.ok) throw new Error('Failed to load JSON');
+
+      const jsonData = await response.json();
+      content.textContent = JSON.stringify(jsonData, null, 2);
+
+      // Initialize JSON field selector (reuse existing function if available)
+      const mainViewer = document.querySelector('.main-document-viewer');
+      if (mainViewer && typeof initJsonFieldSelector === 'function') {
+        initJsonFieldSelector(mainViewer, JSON.stringify(jsonData), currentTask.filename);
+      }
+    }
+
+  } catch (error) {
+    console.error(`Error loading ${format}:`, error);
+    content.innerHTML = `<p style="color: #ef4444; text-align: center; padding: 2rem;">Failed to load ${format.toUpperCase()} content</p>`;
+  }
+}
+
+function setupMainViewerDownloadButtons() {
+  const downloadHtml = document.getElementById('mainDownloadHtml');
+  const downloadTxt = document.getElementById('mainDownloadTxt');
+  const downloadJson = document.getElementById('mainDownloadJson');
+  const downloadAll = document.getElementById('mainDownloadAll');
+
+  if (downloadHtml) {
+    downloadHtml.addEventListener('click', () => downloadMainViewerFormat('html'));
+  }
+  if (downloadTxt) {
+    downloadTxt.addEventListener('click', () => downloadMainViewerFormat('txt'));
+  }
+  if (downloadJson) {
+    downloadJson.addEventListener('click', () => downloadMainViewerFormat('json'));
+  }
+  if (downloadAll) {
+    downloadAll.addEventListener('click', () => downloadAllMainViewerFormats());
+  }
+}
+
+async function downloadMainViewerFormat(format) {
+  if (!currentTask || !currentTask.id) return;
+
+  const taskId = currentTask.id;
+  const filename = currentTask.filename.replace(/\.[^/.]+$/, '');
+
+  try {
+    let url, downloadFilename;
+
+    if (format === 'html') {
+      url = `${API_URL}/api/tasks/${taskId}/result`; // Downloads as PDF
+      downloadFilename = `${filename}_result.pdf`;
+    } else if (format === 'txt') {
+      url = `${API_URL}/api/tasks/${taskId}/txt`;
+      downloadFilename = `${filename}_extracted.txt`;
+    } else if (format === 'json') {
+      url = `${API_URL}/api/tasks/${taskId}/json`;
+      downloadFilename = `${filename}_data.json`;
+    }
+
+    const response = await fetch(url, {
+      headers: { 'x-user-id': USER_ID }
+    });
+
+    if (!response.ok) throw new Error('Download failed');
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = downloadFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+
+    showToast(`Downloaded ${format.toUpperCase()}`, 'success');
+
+  } catch (error) {
+    console.error(`Error downloading ${format}:`, error);
+    showToast(`Failed to download ${format.toUpperCase()}`, 'error');
+  }
+}
+
+async function downloadAllMainViewerFormats() {
+  await downloadMainViewerFormat('html');
+  setTimeout(() => downloadMainViewerFormat('txt'), 200);
+  setTimeout(() => downloadMainViewerFormat('json'), 400);
+  showToast('Downloading all formats...', 'info');
+}
 
 // HIPAA Compliance: Clear PDF cache when user navigates away or closes tab
 window.addEventListener('beforeunload', () => {
@@ -377,6 +914,15 @@ async function showViewer(task) {
     // Load UNTXT preview by default (processed HTML)
     // Original PDF will be loaded on-demand when user clicks "Original" button
     loadDocumentPreview(task.id);
+
+    // Load HTML tab content in main viewer
+    loadMainViewerContent('html');
+
+    // Update viewer title
+    const viewerDocTitle = document.getElementById('viewerDocTitle');
+    if (viewerDocTitle) {
+      viewerDocTitle.textContent = task.filename;
+    }
   } else if (task.status === 'failed') {
     showErrorCard(task);
   } else {
@@ -454,17 +1000,34 @@ function updateProcessingStatus(status) {
 // FILES LIST RENDERING
 // ==========================================
 
-function renderFilesList() {
+async function renderFilesList() {
   const grid = document.getElementById('documentGrid');
 
-  // Mock file data
-  const mockFiles = [
-    { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Completed' },
-    { name: 'Invoice_March.pdf', size: '156 KB', pages: 1, date: 'Jan 14, 2025', status: 'Processing', progress: 67, eta: '30 sec' },
-    { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Completed' },
-    { name: 'Contract_Final.pdf', size: '1.2 MB', pages: 15, date: 'Jan 10, 2025', status: 'Completed' },
-    { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Completed' }
-  ];
+  // Don't render if no folder is selected yet
+  if (currentFolderId === null) {
+    grid.innerHTML = '<p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Loading...</p>';
+    return;
+  }
+
+  // Filter tasks by current folder
+  let filteredTasks = tasks;
+  if (currentFolderId && currentFolderId !== 'all') {
+    filteredTasks = tasks.filter(task => task.folder_id === currentFolderId);
+  }
+
+  // If no tasks, show empty state
+  if (filteredTasks.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <p>No documents in this folder</p>
+        <small>Upload files or drag existing files into this folder to organize them</small>
+      </div>
+    `;
+    return;
+  }
 
   grid.innerHTML = `
     <div class="files-list-container">
@@ -482,31 +1045,26 @@ function renderFilesList() {
           </tr>
         </thead>
         <tbody>
-          ${mockFiles.map(file => {
-            const isCompleted = file.status === 'Completed';
-            const isProcessing = file.status === 'Processing';
+          ${filteredTasks.map(task => {
+            const isCompleted = task.status === 'completed';
+            const isProcessing = task.status === 'processing' || task.status === 'pending';
+            const isFailed = task.status === 'failed';
 
             // Render status cell differently for processing files
             let statusCell;
             if (isProcessing) {
-              statusCell = `
-                <div class="progress-info">
-                  <div class="progress-percentage">${file.progress}%</div>
-                  <div class="progress-bar">
-                    <div class="progress-bar-fill" style="width: ${file.progress}%"></div>
-                  </div>
-                  <div class="progress-eta">${file.eta} remaining</div>
-                </div>
-              `;
+              statusCell = `<span class="status-badge status-processing">Processing...</span>`;
+            } else if (isFailed) {
+              statusCell = `<span class="status-badge status-failed">Failed</span>`;
             } else {
-              statusCell = `<span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>`;
+              statusCell = `<span class="status-badge status-completed">Completed</span>`;
             }
 
             // Action button - only show View for completed files
             let actionButton = '';
             if (isCompleted) {
               actionButton = `
-                <button class="btn-view">
+                <button class="btn-view" data-task-id="${task.id}">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                     <circle cx="12" cy="12" r="3"></circle>
@@ -517,18 +1075,18 @@ function renderFilesList() {
             }
 
             return `
-              <tr class="file-row">
+              <tr class="file-row" data-task-id="${task.id}">
                 <td class="checkbox-col">
-                  <input type="checkbox" class="file-checkbox" data-file-name="${file.name}">
+                  <input type="checkbox" class="file-checkbox" data-file-name="${task.filename}">
                 </td>
                 <td class="file-name">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                   </svg>
-                  ${file.name}
+                  ${task.filename}
                 </td>
-                <td class="file-pages">${file.pages}</td>
+                <td class="file-pages">${task.page_count || '-'}</td>
                 <td class="file-status">
                   ${statusCell}
                 </td>
@@ -536,21 +1094,14 @@ function renderFilesList() {
                   ${actionButton}
                 </td>
                 <td class="file-menu-cell">
-                  <button class="file-menu-btn" data-file="${file.name}">
+                  <button class="file-menu-btn" data-file="${task.filename}" data-task-id="${task.id}">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                       <circle cx="12" cy="12" r="2"></circle>
                       <circle cx="5" cy="12" r="2"></circle>
                       <circle cx="19" cy="12" r="2"></circle>
                     </svg>
                   </button>
-                  <div class="file-context-menu" data-file="${file.name}">
-                    <button class="context-menu-item" data-action="rename">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                      </svg>
-                      <span>Rename</span>
-                    </button>
+                  <div class="file-context-menu" data-file="${task.filename}" data-task-id="${task.id}">
                     <button class="context-menu-item" data-action="download">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -649,8 +1200,8 @@ function renderFilesList() {
 // INLINE VIEWER
 // ==========================================
 
-// Mock document data
-const mockDocuments = {
+// Mock document data removed - all data now comes from backend API
+const mockDocuments_REMOVED = {
   'annual-report-2024.pdf': {
     html: `<h1>Annual Report 2024</h1>
       <p>This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.</p>
@@ -824,12 +1375,12 @@ function toggleInlineViewer(row, fileName) {
   // Add class to current row
   row.classList.add('has-drawer-open');
 
-  // Get document data
-  const docKey = fileName.toLowerCase().replace(/\s+/g, '-');
-  const docData = mockDocuments[docKey] || {
-    html: '<p>No HTML content available</p>',
-    txt: 'No text content available',
-    json: JSON.stringify({ error: 'No data available' }, null, 2)
+  // Get document data from backend API (mock data removed)
+  // This inline viewer is deprecated - use the main viewer instead
+  const docData = {
+    html: '<p>Use the main viewer to see document content</p>',
+    txt: 'Use the main viewer to see document content',
+    json: JSON.stringify({ note: 'Use the main viewer to see document content' }, null, 2)
   };
 
   // Create viewer row
@@ -1257,12 +1808,20 @@ function hideFormatModal() {
   isModalOpen = false;
 }
 
-function processFileUpload(files, formats) {
+async function processFileUpload(files, formats) {
   console.log('Processing upload with formats:', formats);
   console.log('Files:', files);
-  // TODO: Implement actual file upload with format selection
-  // This will call the existing handleFileUpload or similar function
-  // but now it knows which formats to generate
+
+  // Upload each file using the existing handleFileUpload function
+  // The backend currently processes all formats (HTML + JSON) by default
+  for (const file of files) {
+    try {
+      await handleFileUpload(file);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      showNotification('Upload failed: ' + error.message, 'error');
+    }
+  }
 }
 
 // ==========================================
@@ -1393,7 +1952,99 @@ function updateCircularProgress(percent) {
   progressRing.style.strokeDashoffset = offset;
 }
 
+// ==========================================
+// CREDITS CHECK
+// ==========================================
+
+/**
+ * Check if user has sufficient credits before upload
+ * @returns {Promise<boolean>} True if user has credits, false otherwise
+ */
+async function checkCreditsBeforeUpload() {
+  try {
+    // Get current balance from API
+    const response = await fetch(`${API_URL}/api/credits/balance`, {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch credit balance');
+      // Fail open - allow upload if check fails for better UX
+      return true;
+    }
+
+    const data = await response.json();
+    const balance = data.data.balance || 0;
+
+    if (balance < 1) {
+      // Show insufficient credits modal
+      showInsufficientCreditsModal(balance);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking credits:', error);
+    // Fail open - allow upload if check fails
+    return true;
+  }
+}
+
+/**
+ * Show modal when user has insufficient credits
+ * @param {number} balance - Current credit balance
+ */
+function showInsufficientCreditsModal(balance) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Insufficient Credits</h2>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 1rem;">You need at least 1 credit to upload a document.</p>
+        <p style="margin-bottom: 1rem;">Current balance: <strong>${balance} credits</strong></p>
+        <p style="color: var(--gray-600); font-size: 0.875rem;">Each page costs 1 credit to process.</p>
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+        <button class="btn-primary" onclick="window.location.href='settings.html#credits'">Buy Credits</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Close on overlay click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+
+  // Close on ESC key
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
 async function handleFileUpload(file) {
+  // Check credits before upload
+  const hasCredits = await checkCreditsBeforeUpload();
+  if (!hasCredits) {
+    return; // Stop upload if insufficient credits
+  }
+
   const circularDropzone = document.getElementById('circularDropzone');
   const btnUploadCircular = document.getElementById('btnUploadCircular');
   const progressRing = document.getElementById('progressRing');
@@ -1440,6 +2091,15 @@ async function handleFileUpload(file) {
 
     if (data.success) {
       const taskId = data.data.taskId;
+
+      // Update credit balance if provided in response
+      if (data.data.creditsRemaining !== null && data.data.creditsRemaining !== undefined) {
+        console.log(`✓ Credits deducted. Remaining balance: ${data.data.creditsRemaining}`);
+        // Refresh sidebar credits display
+        if (typeof SidebarNav !== 'undefined') {
+          SidebarNav.loadCredits();
+        }
+      }
 
       // If a folder is selected (not "All Documents"), move the task to that folder
       if (currentFolderId && currentFolderId !== 'all') {
@@ -1509,7 +2169,7 @@ async function handleFileUpload(file) {
     setTimeout(() => {
       if (circularDropzone) circularDropzone.classList.remove('error');
       selectedFileForUpload = null;
-      renderDocumentGrid(); // Refresh to show clean state
+      renderFilesList(); // Refresh to show clean state
     }, 3000);
   }
 }
@@ -1528,12 +2188,7 @@ function initFolders() {
   // New folder button
   if (newFolderBtn) {
     newFolderBtn.addEventListener('click', () => {
-      isEditingFolder = false;
-      editingFolderId = null;
-      document.getElementById('folderForm').reset();
-      document.getElementById('folderModalTitle').textContent = 'New Folder';
-      document.getElementById('saveFolderBtn').textContent = 'Create Folder';
-      newFolderModal.classList.add('active');
+      openNewProjectModal();
     });
   }
 
@@ -1576,7 +2231,29 @@ function initFolders() {
       await handleFolderSubmit();
     });
   }
+
+  // Save folder button (also handles form submission)
+  const saveFolderBtn = document.getElementById('saveFolderBtn');
+  if (saveFolderBtn) {
+    saveFolderBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await handleFolderSubmit();
+    });
+  }
 }
+
+// Open new project modal (called from sidebar-nav.js)
+function openNewProjectModal() {
+  isEditingFolder = false;
+  editingFolderId = null;
+  document.getElementById('folderForm').reset();
+  document.getElementById('folderModalTitle').textContent = 'Create New Project';
+  document.getElementById('saveFolderBtn').textContent = 'Create Project';
+  document.getElementById('newFolderModal').classList.add('active');
+}
+
+// Make it globally accessible
+window.openNewProjectModal = openNewProjectModal;
 
 async function loadFolders() {
   try {
@@ -1588,6 +2265,10 @@ async function loadFolders() {
 
     if (data.success) {
       folders = data.folders;
+
+      // Cache projects for instant loading on other pages
+      localStorage.setItem('sidebarProjects', JSON.stringify(folders));
+
       renderFolders();
       updateFolderCounts();
       console.log(`✓ Folders loaded: ${folders.length} total`);
@@ -1598,6 +2279,16 @@ async function loadFolders() {
 }
 
 function renderFolders() {
+  // Sidebar projects are managed by sidebar-nav.js
+  // Just notify it to update if needed
+  if (typeof SidebarNav !== 'undefined' && SidebarNav.renderProjects) {
+    SidebarNav.renderProjects(folders);
+  }
+
+  // Setup click handlers for project items (for app.js selectFolder functionality)
+  setupProjectClickHandlers();
+
+  // Render Folders List (existing code)
   const foldersList = document.getElementById('foldersList');
   if (!foldersList) return;
 
@@ -1705,21 +2396,44 @@ function renderFolders() {
         m.classList.remove('show');
       });
     }
+    if (!e.target.closest('.project-item-wrapper')) {
+      document.querySelectorAll('.project-context-menu.active').forEach(m => {
+        m.classList.remove('active');
+      });
+    }
   });
 
   // Make folder items drop targets for drag and drop
   enableFolderDropTargets();
 }
 
+// Setup click handlers for project items in sidebar (app.js specific)
+function setupProjectClickHandlers() {
+  document.querySelectorAll('.project-item[data-project-id]').forEach(link => {
+    // Remove existing listeners to avoid duplicates
+    const newLink = link.cloneNode(true);
+    link.parentNode.replaceChild(newLink, link);
+
+    newLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const projectId = newLink.dataset.projectId;
+      selectFolder(projectId);
+    });
+  });
+}
+
 function selectFolder(folderId) {
   currentFolderId = folderId;
+
+  // Save to localStorage so it persists on reload
+  localStorage.setItem('selectedProject', folderId);
 
   // Close any open menus
   document.querySelectorAll('.folder-menu.show').forEach(m => {
     m.classList.remove('show');
   });
 
-  // Update active state
+  // Update active state on folder items
   document.querySelectorAll('.folder-item').forEach(item => {
     item.classList.remove('active');
   });
@@ -1729,8 +2443,29 @@ function selectFolder(folderId) {
     selectedFolder.classList.add('active');
   }
 
+  // Update active state on project items in sidebar
+  document.querySelectorAll('.project-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  const selectedProject = document.querySelector(`.project-item[data-project-id="${folderId}"]`);
+  if (selectedProject) {
+    selectedProject.classList.add('active');
+  }
+
+  // Update page heading with folder name
+  const projectNameHeader = document.getElementById('projectNameHeader');
+  if (projectNameHeader) {
+    if (folderId === 'all') {
+      projectNameHeader.textContent = 'All Files';
+    } else {
+      const folder = folders.find(f => f.id === folderId);
+      projectNameHeader.textContent = folder ? folder.name : 'Documents';
+    }
+  }
+
   // Filter tasks in main area
-  renderDocumentGrid();
+  renderFilesList();
 
   // If in viewer mode (viewing a document), show folder documents list in sidebar
   const viewerView = document.getElementById('viewerView');
@@ -1738,7 +2473,7 @@ function selectFolder(folderId) {
     showFolderDocumentsListInViewer(folderId);
   }
 
-  console.log(`📁 Selected folder: ${folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name}`);
+  console.log(`📁 Selected folder: ${folderId === 'all' ? 'All Files' : folders.find(f => f.id === folderId)?.name}`);
 }
 
 function showFolderDocumentsListInViewer(folderId) {
@@ -1746,11 +2481,11 @@ function showFolderDocumentsListInViewer(folderId) {
   const backBtn = document.getElementById('backToFoldersBtn');
   const foldersList = document.getElementById('foldersList');
 
-  // Get folder info or use "All Documents"
-  let folderName = 'All Documents';
+  // Get folder info or use "All Files"
+  let folderName = 'All Files';
   let folderColor = null;
 
-  if (folderId) {
+  if (folderId && folderId !== 'all') {
     const folder = folders.find(f => f.id === folderId);
     if (folder) {
       folderName = folder.name;
@@ -1893,15 +2628,25 @@ async function handleFolderSubmit() {
       // If editing, refresh tasks to update folder names
       if (isEditingFolder) {
         await loadTasks();
+
+        // If we're editing the currently selected folder, update the header
+        if (editingFolderId === currentFolderId) {
+          const projectNameHeader = document.getElementById('projectNameHeader');
+          if (projectNameHeader) {
+            projectNameHeader.textContent = name;
+          }
+        }
       }
 
-      console.log(`✓ Folder ${isEditingFolder ? 'updated' : 'created'}: ${name}`);
+      const action = isEditingFolder ? 'updated' : 'created';
+      console.log(`✓ Folder ${action}: ${name}`);
+      showToast(`Folder ${action}: ${name}`, 'success');
     } else {
-      alert(data.error || 'Failed to save folder');
+      showToast(data.error || 'Failed to save folder', 'error');
     }
   } catch (error) {
     console.error('Failed to save folder:', error);
-    alert('Failed to save folder: ' + error.message);
+    showToast('Failed to save folder: ' + error.message, 'error');
   } finally {
     saveFolderBtn.disabled = false;
     saveFolderBtn.textContent = isEditingFolder ? 'Update Folder' : 'Create Folder';
@@ -1923,43 +2668,86 @@ function editFolder(folderId) {
   document.getElementById('newFolderModal').classList.add('active');
 }
 
+// Make functions globally accessible for sidebar
+window.editFolder = editFolder;
+
+// Show delete confirmation modal
+function showDeleteConfirmation(folderName, taskCount, onConfirm) {
+  const modal = document.getElementById('deleteConfirmModal');
+  const title = document.getElementById('deleteConfirmTitle');
+  const message = document.getElementById('deleteConfirmMessage');
+  const confirmBtn = document.getElementById('confirmDeleteBtn');
+  const cancelBtn = document.getElementById('cancelDeleteBtn');
+
+  title.textContent = `Delete "${folderName}"?`;
+  message.textContent = taskCount > 0
+    ? `${taskCount} document(s) will be moved to "All Documents".`
+    : 'This project will be deleted permanently.';
+
+  modal.classList.add('show');
+
+  // Remove any existing listeners
+  const newConfirmBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+  const newCancelBtn = cancelBtn.cloneNode(true);
+  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+  // Add new listeners
+  newConfirmBtn.addEventListener('click', () => {
+    modal.classList.remove('show');
+    onConfirm();
+  });
+
+  newCancelBtn.addEventListener('click', () => {
+    modal.classList.remove('show');
+  });
+
+  // Close on overlay click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+    }
+  });
+}
+
 async function deleteFolder(folderId) {
   const folder = folders.find(f => f.id === folderId);
   if (!folder) return;
 
   const taskCount = tasks.filter(task => task.folder_id === folderId).length;
-  const message = taskCount > 0
-    ? `Delete "${folder.name}"? ${taskCount} document(s) will be moved to "All Documents".`
-    : `Delete "${folder.name}"?`;
 
-  if (!confirm(message)) return;
+  showDeleteConfirmation(folder.name, taskCount, async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/folders/${folderId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
 
-  try {
-    const response = await fetch(`${API_URL}/api/folders/${folderId}`, {
-      method: 'DELETE',
-      credentials: 'include'
-    });
+      const data = await response.json();
 
-    const data = await response.json();
+      if (data.success) {
+        // If we were viewing this folder, switch to "All Documents"
+        if (currentFolderId === folderId) {
+          selectFolder('all');
+        }
 
-    if (data.success) {
-      // If we were viewing this folder, switch to "All Documents"
-      if (currentFolderId === folderId) {
-        selectFolder('all');
+        await loadFolders();
+        await loadTasks(); // Refresh to show tasks moved to "All Documents"
+
+        console.log(`✓ Folder deleted: ${folder.name}`);
+        showToast(`Project deleted: ${folder.name}`, 'success');
+      } else {
+        showToast(data.error || 'Failed to delete project', 'error');
       }
-
-      await loadFolders();
-      await loadTasks(); // Refresh to show tasks moved to "All Documents"
-
-      console.log(`✓ Folder deleted: ${folder.name}`);
-    } else {
-      alert(data.error || 'Failed to delete folder');
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      showToast('Failed to delete project: ' + error.message, 'error');
     }
-  } catch (error) {
-    console.error('Failed to delete folder:', error);
-    alert('Failed to delete folder: ' + error.message);
-  }
+  });
 }
+
+// Make deleteFolder globally accessible for sidebar
+window.deleteFolder = deleteFolder;
 
 // Drag and drop for moving tasks to folders
 function enableFolderDropTargets() {
@@ -2007,15 +2795,44 @@ async function moveTaskToFolder(taskId, folderId) {
       await loadTasks();
       updateFolderCounts();
 
-      const folder = folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name;
-      console.log(`✓ Task moved to: ${folder}`);
+      const folderName = folderId === 'all' ? 'All Documents' : folders.find(f => f.id === folderId)?.name;
+      console.log(`✓ Task moved to: ${folderName}`);
+      showToast(`Moved to ${folderName}`, 'success');
     } else {
-      alert(data.error || 'Failed to move task');
+      showToast(data.error || 'Failed to move file', 'error');
     }
   } catch (error) {
     console.error('Failed to move task:', error);
-    alert('Failed to move task: ' + error.message);
+    showToast('Failed to move file: ' + error.message, 'error');
   }
+}
+
+// ==========================================
+// TOAST NOTIFICATIONS
+// ==========================================
+
+/**
+ * Show toast notification
+ * @param {string} message - Message to display
+ * @param {string} type - Type: 'success', 'error', 'info'
+ */
+function showToast(message, type = 'info') {
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  // Add to page
+  document.body.appendChild(toast);
+
+  // Animate in
+  setTimeout(() => toast.classList.add('show'), 10);
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // ==========================================
@@ -2044,7 +2861,8 @@ async function loadTasks() {
         tasks = data.data.tasks;
         updateStats(data.data.stats);
         updateFolderCounts();
-        renderDocumentGrid();
+        // Don't render files list here - wait for folder selection
+        // renderFilesList();
 
         // If viewing a task, update it
         if (currentTask) {
@@ -2088,7 +2906,7 @@ async function loadTasksWithoutReload() {
     if (data.success) {
       tasks = data.data.tasks;
       updateStats(data.data.stats);
-      renderDocumentGrid();
+      renderFilesList();
 
       // Update currentTask metadata silently (no viewer reload)
       if (currentTask) {
@@ -2105,11 +2923,14 @@ async function loadTasksWithoutReload() {
 }
 
 function updateStats(stats) {
-  // Inline stats (dashboard)
-  document.getElementById('statTotalInline').textContent = stats.total || 0;
-  document.getElementById('statProcessingInline').textContent =
-    (parseInt(stats.pending || 0) + parseInt(stats.processing || 0));
-  document.getElementById('statCompletedInline').textContent = stats.completed || 0;
+  // Inline stats (dashboard) - only update if elements exist
+  const statTotal = document.getElementById('statTotalInline');
+  const statProcessing = document.getElementById('statProcessingInline');
+  const statCompleted = document.getElementById('statCompletedInline');
+
+  if (statTotal) statTotal.textContent = stats.total || 0;
+  if (statProcessing) statProcessing.textContent = (parseInt(stats.pending || 0) + parseInt(stats.processing || 0));
+  if (statCompleted) statCompleted.textContent = stats.completed || 0;
 }
 
 function renderDocumentGrid() {
@@ -2158,11 +2979,10 @@ function renderDocumentGrid() {
       grid.innerHTML = `
         <div class="empty-state">
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
-          <p>No documents in this folder</p>
-          <small>Drag and drop documents here to organize them</small>
+          <p>No documents in ${folders.find(f => f.id === currentFolderId)?.name || 'this folder'}</p>
+          <small>Upload files or drag existing files into this folder to organize them</small>
         </div>
       `;
     }
@@ -2779,6 +3599,9 @@ function initWebSocket() {
           handleTaskUpdate(message.data);
         } else if (message.type === 'db_change') {
           handleDatabaseChange(message.data);
+        } else if (message.type === 'credit_update') {
+          // Handle real-time credit balance updates
+          handleCreditUpdate(message.data);
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
@@ -2808,7 +3631,7 @@ function handleTaskUpdate(data) {
 
   if (taskIndex !== -1) {
     tasks[taskIndex].status = data.status;
-    renderDocumentGrid();
+    renderFilesList();
   }
 
   // Reload full data
@@ -2826,6 +3649,23 @@ function handleDatabaseChange(data) {
   } else {
     // Normal flow: reload everything
     loadTasks();
+  }
+}
+
+/**
+ * Handle real-time credit balance updates via WebSocket
+ */
+function handleCreditUpdate(data) {
+  console.log('💰 Credit update received:', data);
+
+  // Refresh credit balance in sidebar
+  if (typeof SidebarNav !== 'undefined') {
+    SidebarNav.loadCredits();
+  }
+
+  // Show notification if provided
+  if (data.message) {
+    console.log(data.message);
   }
 }
 
@@ -2945,6 +3785,10 @@ async function checkAuth() {
       if (userInfo) {
         userInfo.textContent = `${user.username} (${user.email})`;
       }
+
+      // Show content after successful authentication
+      document.body.classList.add('auth-checked');
+
       return true;
     }
 

@@ -225,22 +225,14 @@ start_worker() {
         return 0
     fi
 
-    # Start worker
-    print_info "Starting worker process..."
-    cd "$WORKER_DIR"
-    nohup python run_worker.py > "$WORKER_LOG" 2>&1 &
-    echo $! > "$WORKER_PID"
+    # OLD WORKER DISABLED - Backend now automatically starts MLX worker pool
+    print_info "Skipping old worker (backend starts MLX worker pool automatically)..."
+    # cd "$WORKER_DIR"
+    # nohup python run_worker.py > "$WORKER_LOG" 2>&1 &
+    # echo $! > "$WORKER_PID"
 
-    sleep 2
-
-    # Verify worker started
-    if kill -0 $(cat "$WORKER_PID") 2>/dev/null; then
-        print_success "Worker started (PID: $(cat $WORKER_PID))"
-        print_info "Logs: $WORKER_LOG"
-    else
-        print_error "Worker failed to start. Check logs: $WORKER_LOG"
-        exit 1
-    fi
+    # Worker pool is managed by backend - no verification needed here
+    print_success "Worker pool will be started by backend (check backend logs)"
 }
 
 start_flask() {

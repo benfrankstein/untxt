@@ -36,9 +36,17 @@ class Config:
     # File Storage
     OUTPUT_DIR = os.getenv('OUTPUT_DIR', str(Path(__file__).parent.parent / 'output'))
 
-    # Model Configuration (simulated for now)
-    MODEL_NAME = 'Qwen3-VL-3B'
-    MODEL_VERSION = 'v1.0-simulated'
+    # Model Configuration
+    MODEL_NAME = 'Qwen3-VL-8B-Instruct'
+    MODEL_VERSION = 'v1.0'
+    MODEL_PATH = os.getenv(
+        'MODEL_PATH',
+        str(Path(__file__).parent.parent / 'models' / 'qwen3_vl_8b_model')
+    )
+
+    # GPU Configuration
+    GPU_MEMORY_UTILIZATION = float(os.getenv('GPU_MEMORY_UTILIZATION', '0.75'))
+    MAX_MODEL_LENGTH = int(os.getenv('MAX_MODEL_LENGTH', '32768'))
 
     # Redis Key Patterns
     TASK_QUEUE_KEY = 'ocr:task:queue'

@@ -293,3 +293,104 @@ body {
   height: auto;
   max-width: 80%;
 }
+
+/* ============================================
+   GOOGLE OAUTH BUTTON
+   ============================================ */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 24px 0;
+  color: var(--color-neutral);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.4);
+}
+
+.auth-divider span {
+  padding: 0 12px;
+}
+
+.google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 1.5rem;
+  background-color: white;
+  color: #3c4043;
+  border: 2px solid rgba(174, 170, 151, 0.4);
+  border-radius: 0.5rem;
+  font-family: var(--font-family-medium);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+  text-decoration: none;
+}
+
+.google-button:hover {
+  background-color: #f8f9fa;
+  border-color: #dadce0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.google-button:active {
+  background-color: #f1f3f4;
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   ACCOUNT LINKING PAGE
+   ============================================ */
+.link-account-header {
+  margin-bottom: 32px;
+}
+
+.link-account-header h2 {
+  font-family: var(--font-family-bold);
+  font-size: 24px;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+.link-account-header p {
+  font-family: var(--font-family-base);
+  font-size: 15px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.link-account-header strong {
+  color: var(--color-primary);
+  font-family: var(--font-family-medium);
+}
+
+.cancel-link {
+  display: block;
+  text-align: center;
+  margin-top: 20px;
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-neutral);
+  text-decoration: none;
+  transition: color 200ms ease-out;
+}
+
+.cancel-link:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}

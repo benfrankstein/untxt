@@ -5,7 +5,9 @@
 
 const express = require('express');
 const router = express.Router();
+const passport = require('../config/passport');
 const authService = require('../services/auth.service');
+const googleAuthService = require('../services/google-auth.service');
 const sessionService = require('../services/session.service');
 const auditService = require('../services/audit.service');
 
@@ -373,6 +375,266 @@ router.get('/profile', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve profile'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/google
+ * Initiate Google OAuth flow
+ */
+router.get('/google',
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false
+  })
+);
+
+/**
+ * GET /api/auth/google/callback
+ * Handle Google OAuth callback
+ */
+router.get('/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: 'http://localhost:3000/auth.html?error=google_auth_failed' }),
+  async (req, res) => {
+    try {
+      const googleProfile = req.user;
+      const ipAddress = sessionService.getClientIP(req);
+      const userAgent = sessionService.getUserAgent(req);
+
+      // Process Google auth (handles signup, login, and conflict detection)
+      const result = await googleAuthService.processGoogleAuth(googleProfile);
+
+      if (result.needsLinking) {
+        // Email exists with local auth - redirect to linking page
+        console.log('⚠ Account linking required:', result.email);
+
+        // Store pending Google data in session temporarily
+        req.session.pendingGoogleLink = {
+          googleId: googleProfile.id,
+          email: result.email,
+          firstName: googleProfile.given_name,
+          lastName: googleProfile.family_name
+        };
+
+        await auditService.logEvent({
+          event_type: 'google_email_conflict',
+          user_id: null,
+          metadata: { email: result.email },
+          ip_address: ipAddress,
+          user_agent: userAgent
+        });
+
+        // Redirect to frontend linking page
+        return res.redirect(`http://localhost:3000/link-account.html?email=${encodeURIComponent(result.email)}&provider=google`);
+      }
+
+      // Successful login/signup
+      const user = result.user;
+
+      // Create session
+      req.session.userId = user.id;
+      req.session.user = {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        role: user.role
+      };
+
+      // Track session in database
+      await sessionService.createSession({
+        userId: user.id,
+        sessionToken: req.sessionID,
+        ipAddress,
+        userAgent,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+      });
+
+      // Audit logging
+      if (result.isNewUser) {
+        await auditService.logAccountCreated(user.id, user.email, ipAddress, userAgent);
+        await auditService.logEvent({
+          event_type: 'google_signup_success',
+          user_id: user.id,
+          metadata: { email: user.email },
+          ip_address: ipAddress,
+          user_agent: userAgent
+        });
+        console.log(`✓ New Google user signed up: ${user.email}`);
+      } else {
+        await auditService.logAuthSuccess(user.id, ipAddress, userAgent);
+        await auditService.logEvent({
+          event_type: 'google_login_success',
+          user_id: user.id,
+          metadata: { email: user.email },
+          ip_address: ipAddress,
+          user_agent: userAgent
+        });
+        console.log(`✓ Google user logged in: ${user.email}`);
+      }
+
+      await auditService.logSessionCreated(user.id, req.sessionID, ipAddress, userAgent);
+
+      // Redirect to frontend dashboard
+      res.redirect('http://localhost:3000/index.html?login=success');
+
+    } catch (error) {
+      console.error('Google OAuth callback error:', error);
+
+      const ipAddress = sessionService.getClientIP(req);
+      const userAgent = sessionService.getUserAgent(req);
+
+      await auditService.logEvent({
+        event_type: 'google_auth_failed',
+        user_id: null,
+        metadata: { error: error.message },
+        ip_address: ipAddress,
+        user_agent: userAgent
+      });
+
+      // Redirect to login with error
+      res.redirect(`http://localhost:3000/auth.html?error=${encodeURIComponent(error.message)}`);
+    }
+  }
+);
+
+/**
+ * POST /api/auth/google/link
+ * Link Google account to existing local account
+ * Requires password verification
+ */
+router.post('/google/link', async (req, res) => {
+  try {
+    const { password } = req.body;
+    const pendingGoogleLink = req.session.pendingGoogleLink;
+
+    if (!pendingGoogleLink) {
+      return res.status(400).json({
+        success: false,
+        error: 'No pending Google account to link. Please try signing in with Google again.'
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password is required to link accounts'
+      });
+    }
+
+    const { googleId, email } = pendingGoogleLink;
+    const ipAddress = sessionService.getClientIP(req);
+    const userAgent = sessionService.getUserAgent(req);
+
+    // Find user by email
+    const existingUser = await authService.authenticateUser(email, password);
+
+    // Link Google account
+    const linkedUser = await googleAuthService.linkGoogleAccount(
+      existingUser.id,
+      password,
+      googleId,
+      email
+    );
+
+    // Clear pending link data
+    delete req.session.pendingGoogleLink;
+
+    // Create session
+    req.session.userId = linkedUser.id;
+    req.session.user = {
+      id: linkedUser.id,
+      email: linkedUser.email,
+      username: linkedUser.username,
+      role: linkedUser.role
+    };
+
+    // Track session
+    await sessionService.createSession({
+      userId: linkedUser.id,
+      sessionToken: req.sessionID,
+      ipAddress,
+      userAgent,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+    });
+
+    // Audit log
+    await auditService.logEvent({
+      event_type: 'account_link_success',
+      user_id: linkedUser.id,
+      metadata: { provider: 'google', email: linkedUser.email },
+      ip_address: ipAddress,
+      user_agent: userAgent
+    });
+
+    await auditService.logSessionCreated(linkedUser.id, req.sessionID, ipAddress, userAgent);
+
+    res.json({
+      success: true,
+      message: 'Google account linked successfully',
+      data: {
+        user: {
+          id: linkedUser.id,
+          email: linkedUser.email,
+          username: linkedUser.username,
+          role: linkedUser.role
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Google link error:', error);
+
+    const ipAddress = sessionService.getClientIP(req);
+    const userAgent = sessionService.getUserAgent(req);
+
+    await auditService.logEvent({
+      event_type: 'account_link_failed',
+      user_id: null,
+      metadata: { error: error.message },
+      ip_address: ipAddress,
+      user_agent: userAgent
+    });
+
+    let statusCode = 400;
+    if (error.message.includes('Invalid credentials') || error.message.includes('Invalid password')) {
+      statusCode = 401;
+    }
+
+    res.status(statusCode).json({
+      success: false,
+      error: error.message || 'Failed to link Google account'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/check-email
+ * Check if email exists and what auth provider it uses
+ * Used by frontend to show appropriate error messages
+ */
+router.get('/check-email', async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email parameter is required'
+      });
+    }
+
+    const result = await googleAuthService.checkEmailExists(email);
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check email'
     });
   }
 });

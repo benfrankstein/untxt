@@ -121,6 +121,31 @@ class DatabaseClient:
             self.conn.rollback()
             return False
 
+    def update_task_result_key(self, task_id: str, s3_result_key: str) -> bool:
+        """
+        Update task with primary result S3 key (HTML format).
+
+        Args:
+            task_id: Task UUID
+            s3_result_key: S3 key for HTML result
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE tasks SET s3_result_key = %s WHERE id = %s",
+                    (s3_result_key, task_id)
+                )
+                self.conn.commit()
+                logger.info(f"Updated task {task_id} s3_result_key: {s3_result_key}")
+                return True
+        except Exception as e:
+            logger.error(f"Error updating task result key: {e}")
+            self.conn.rollback()
+            return False
+
     def increment_task_attempts(self, task_id: str) -> bool:
         """
         Increment task attempt counter.
@@ -217,6 +242,142 @@ class DatabaseClient:
                 return True
         except Exception as e:
             logger.error(f"Database ping failed: {e}")
+            return False
+
+    def insert_derived_format_page(
+        self,
+        task_id: str,
+        page_number: int,
+        total_pages: int,
+        format_type: str,
+        status: str,
+        worker_id: str = None,
+        result_s3_key: str = None,
+        processing_time_ms: int = None,
+        page_image_s3_key: str = None
+    ) -> bool:
+        """
+        Insert a new task_pages record for derived formats (e.g., TXT).
+        Used when a format is generated during processing but wasn't initially requested.
+
+        Args:
+            task_id: Task UUID
+            page_number: Page number (1-indexed)
+            total_pages: Total number of pages in document
+            format_type: Format type (e.g., 'txt')
+            status: Status ('completed', 'failed')
+            worker_id: Worker ID that processed this page
+            result_s3_key: S3 key for the result
+            processing_time_ms: Processing time in milliseconds
+            page_image_s3_key: S3 key for page image (can be empty string for derived formats)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO task_pages (
+                        task_id, page_number, total_pages, format_type, status,
+                        worker_id, result_s3_key, processing_time_ms,
+                        page_image_s3_key, started_at, completed_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (task_id, page_number, format_type) DO UPDATE
+                    SET status = EXCLUDED.status,
+                        worker_id = EXCLUDED.worker_id,
+                        result_s3_key = EXCLUDED.result_s3_key,
+                        processing_time_ms = EXCLUDED.processing_time_ms,
+                        completed_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        task_id, page_number, total_pages, format_type, status,
+                        worker_id, result_s3_key, processing_time_ms,
+                        page_image_s3_key or ''
+                    )
+                )
+                self.conn.commit()
+                logger.info(f"Inserted derived format: {task_id} page {page_number} ({format_type}) → {status}")
+                return True
+        except Exception as e:
+            logger.error(f"Error inserting derived format page: {e}")
+            self.conn.rollback()
+            return False
+
+    def update_task_page_status(
+        self,
+        task_id: str,
+        page_number: int,
+        format_type: str,
+        status: str,
+        worker_id: str = None,
+        result_s3_key: str = None,
+        processing_time_ms: int = None,
+        error_message: str = None
+    ) -> bool:
+        """
+        Update task_pages status for page-level tracking (HIPAA compliance).
+
+        Args:
+            task_id: Task UUID
+            page_number: Page number (1-indexed)
+            format_type: Format type ('html', 'json', or 'txt')
+            status: Status ('pending', 'processing', 'completed', 'failed')
+            worker_id: Worker ID that processed this page
+            result_s3_key: S3 key for the result
+            processing_time_ms: Processing time in milliseconds
+            error_message: Error message if failed
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            with self.conn.cursor() as cur:
+                # Build dynamic SET clause
+                set_clauses = ["status = %s"]
+                params = [status]
+
+                # Add timestamps based on status
+                if status == 'processing':
+                    set_clauses.append("started_at = COALESCE(started_at, CURRENT_TIMESTAMP)")
+                elif status in ('completed', 'failed'):
+                    set_clauses.append("completed_at = CURRENT_TIMESTAMP")
+
+                if worker_id is not None:
+                    set_clauses.append("worker_id = %s")
+                    params.append(worker_id)
+
+                if result_s3_key is not None:
+                    set_clauses.append("result_s3_key = %s")
+                    params.append(result_s3_key)
+
+                if processing_time_ms is not None:
+                    set_clauses.append("processing_time_ms = %s")
+                    params.append(processing_time_ms)
+
+                if error_message is not None:
+                    set_clauses.append("error_message = %s")
+                    params.append(error_message)
+
+                # Add WHERE clause parameters (now includes format_type)
+                params.extend([task_id, page_number, format_type])
+
+                query = f"""
+                    UPDATE task_pages
+                    SET {', '.join(set_clauses)}
+                    WHERE task_id = %s AND page_number = %s AND format_type = %s
+                """
+
+                cur.execute(query, params)
+                self.conn.commit()
+
+                logger.info(f"Updated task_pages status: {task_id} page {page_number} ({format_type}) → {status}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error updating task_pages status: {e}")
+            self.conn.rollback()
             return False
 
     def close(self):

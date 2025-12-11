@@ -647,13 +647,15 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: none;
+  background: white;
   border: 1px solid rgba(174, 170, 151, 0.3);
   border-radius: 6px;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background-color 200ms, border-color 200ms, transform 200ms;
+  transition: background-color 200ms, border-color 200ms;
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .sidebar-collapse-btn:hover {
@@ -663,7 +665,7 @@
 }
 
 .sidebar-collapse-btn svg {
-  transition: transform 300ms;
+  transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ============================================
@@ -683,6 +685,7 @@
 
 .sidebar-nav.collapsed .sidebar-logo {
   justify-content: center;
+  position: relative;
 }
 
 .sidebar-nav.collapsed .sidebar-logo-content {
@@ -690,7 +693,16 @@
 }
 
 .sidebar-nav.collapsed .sidebar-collapse-btn {
-  display: none;
+  display: flex;
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  margin-top: -16px;
+  transition: right 400ms cubic-bezier(0.4, 0, 0.2, 1), margin-top 0ms;
+}
+
+.sidebar-nav.collapsed .sidebar-collapse-btn svg {
+  transform: rotate(180deg);
 }
 
 .sidebar-nav.collapsed .sidebar-logo-content {

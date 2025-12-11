@@ -52,8 +52,8 @@ const SidebarNav = {
     // Load credits balance
     this.loadCredits();
 
-    // Load projects (TODO: implement)
-    // this.loadProjects();
+    // Load projects
+    this.loadProjects();
   },
 
   /**
@@ -381,6 +381,218 @@ const SidebarNav = {
   },
 
   /**
+   * Load projects from API and render them in sidebar
+   * Uses localStorage cache for instant rendering, then updates from API
+   */
+  async loadProjects() {
+    try {
+      // First, check if we have cached projects
+      const cachedProjects = localStorage.getItem('sidebarProjects');
+      if (cachedProjects) {
+        try {
+          const folders = JSON.parse(cachedProjects);
+          console.log('[SidebarNav] Rendering from cache:', folders.length, 'projects');
+          this.renderProjects(folders);
+        } catch (e) {
+          console.error('[SidebarNav] Failed to parse cached projects:', e);
+        }
+      }
+
+      // Then fetch fresh data from API
+      console.log('[SidebarNav] Fetching projects from API...');
+      const response = await fetch('http://localhost:8080/api/folders', {
+        credentials: 'include'
+      });
+
+      console.log('[SidebarNav] API response status:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[SidebarNav] API response data:', data);
+        const folders = data.folders || data.data || [];
+        console.log('[SidebarNav] Loaded projects:', folders);
+
+        // Cache the fresh data
+        localStorage.setItem('sidebarProjects', JSON.stringify(folders));
+
+        // Re-render with fresh data
+        this.renderProjects(folders);
+      } else {
+        console.error('[SidebarNav] API request failed:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  },
+
+  /**
+   * Render projects in sidebar
+   */
+  renderProjects(folders) {
+    const projectsList = this.projectsList;
+    if (!projectsList) {
+      console.log('[SidebarNav] projectsList element not found');
+      return;
+    }
+
+    console.log('[SidebarNav] Rendering projects:', folders.length, 'folders');
+
+    // Keep the "New Project" button
+    const newProjectBtn = projectsList.querySelector('#newProjectBtn');
+
+    // Clear existing projects (except New Project button)
+    const existingProjects = projectsList.querySelectorAll('.project-item-wrapper, .project-item-all-files');
+    console.log('[SidebarNav] Clearing', existingProjects.length, 'existing items');
+    existingProjects.forEach(el => el.remove());
+
+    // Add "All Files" as first item
+    const allFilesWrapper = document.createElement('div');
+    allFilesWrapper.className = 'project-item-wrapper project-item-all-files';
+    allFilesWrapper.innerHTML = `
+      <a href="/index.html?folder=all" class="project-item" data-project-id="all">
+        <svg class="project-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3h18v18H3z"></path>
+          <path d="M9 3v18"></path>
+          <path d="M3 9h18"></path>
+          <path d="M3 15h18"></path>
+        </svg>
+        <span class="project-name">All Files</span>
+      </a>
+    `;
+    projectsList.appendChild(allFilesWrapper);
+
+    // Render each folder as a project
+    folders.forEach(folder => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'project-item-wrapper';
+      wrapper.innerHTML = `
+        <a href="/index.html?folder=${folder.id}" class="project-item" data-project-id="${folder.id}">
+          <svg class="project-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${folder.color || '#c7ff00'}" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span class="project-name">${this.escapeHtml(folder.name)}</span>
+        </a>
+        <button class="project-menu-btn" data-project-id="${folder.id}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <circle cx="12" cy="12" r="2"></circle>
+            <circle cx="5" cy="12" r="2"></circle>
+            <circle cx="19" cy="12" r="2"></circle>
+          </svg>
+        </button>
+        <div class="project-context-menu" data-project-id="${folder.id}">
+          <button class="context-menu-item" data-action="rename">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            <span>Rename Project</span>
+          </button>
+          <button class="context-menu-item context-menu-item-danger" data-action="delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete Project</span>
+          </button>
+        </div>
+      `;
+      projectsList.appendChild(wrapper);
+    });
+
+    // Re-bind context menu events
+    this.bindProjectMenuEvents();
+  },
+
+  /**
+   * Bind project context menu events
+   */
+  bindProjectMenuEvents() {
+    const menuBtns = document.querySelectorAll('.project-menu-btn');
+    const contextMenus = document.querySelectorAll('.project-context-menu');
+    const projectLinks = document.querySelectorAll('.project-item[data-project-id]');
+
+    // Handle project link clicks to save to localStorage
+    projectLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        const projectId = link.dataset.projectId;
+        localStorage.setItem('selectedProject', projectId);
+        console.log('📁 Saved selected project to localStorage:', projectId);
+      });
+    });
+
+    // Toggle context menus
+    menuBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const projectId = btn.dataset.projectId;
+        const menu = document.querySelector(`.project-context-menu[data-project-id="${projectId}"]`);
+
+        // Close all other menus
+        contextMenus.forEach(m => {
+          if (m !== menu) m.classList.remove('active');
+        });
+
+        // Toggle this menu
+        menu.classList.toggle('active');
+      });
+    });
+
+    // Handle menu actions
+    const menuItems = document.querySelectorAll('.project-context-menu .context-menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('click', async (e) => {
+        const menu = item.closest('.project-context-menu');
+        const projectId = menu.dataset.projectId;
+        const action = item.dataset.action;
+
+        // Close menu
+        menu.classList.remove('active');
+
+        if (action === 'rename') {
+          // Call global function from app.js if available
+          if (typeof window.editFolder === 'function') {
+            window.editFolder(projectId);
+          } else {
+            // Fallback: redirect to main page with edit parameter
+            window.location.href = `/index.html?edit=${projectId}`;
+          }
+        } else if (action === 'delete') {
+          // Call global function from app.js if available
+          if (typeof window.deleteFolder === 'function') {
+            window.deleteFolder(projectId);
+          } else {
+            // Fallback: redirect to main page with delete parameter
+            window.location.href = `/index.html?delete=${projectId}`;
+          }
+        }
+      });
+    });
+
+    // Close menus when clicking outside
+    document.addEventListener('click', () => {
+      contextMenus.forEach(m => m.classList.remove('active'));
+    });
+  },
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  /**
+   * Clear the cached projects
+   * Call this when projects are created, updated, or deleted
+   */
+  clearProjectsCache() {
+    localStorage.removeItem('sidebarProjects');
+    console.log('[SidebarNav] Cache cleared');
+  },
+
+  /**
    * Update credits balance (called from other pages when credits change)
    */
   updateCredits(newBalance) {
@@ -535,9 +747,12 @@ const SidebarNav = {
    * Handle new project button click
    */
   handleNewProject() {
-    // TODO: Implement new project modal/flow
-    console.log('Create new project');
-    alert('New project creation will be implemented soon!');
+    // Call the global function from app.js
+    if (typeof window.openNewProjectModal === 'function') {
+      window.openNewProjectModal();
+    } else {
+      console.error('openNewProjectModal function not found');
+    }
   },
 
   /**

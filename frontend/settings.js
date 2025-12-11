@@ -6,7 +6,11 @@
 const API_BASE = 'http://localhost:8080/api';
 
 // Initialize settings page
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Check for Stripe success redirect first
+  await handleStripeSuccess();
+
+  // Then initialize settings
   initializeSettings();
 });
 
@@ -149,6 +153,49 @@ async function loadCreditsData() {
 }
 
 /**
+ * Handle Stripe redirect after successful payment
+ */
+async function handleStripeSuccess() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
+
+  if (!sessionId) return;
+
+  console.log('Processing Stripe payment success...');
+  showNotification('Processing your payment...', 'info');
+
+  try {
+    const response = await fetch(`${API_BASE}/credits/verify-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ sessionId })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showNotification(`Success! ${data.data.creditsAdded} credits added to your account`, 'success');
+      await loadCreditsData();
+      // Update sidebar credit balance
+      if (typeof SidebarNav !== 'undefined') {
+        SidebarNav.loadCredits();
+      }
+
+      // Clean URL (remove session_id parameter)
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    } else {
+      showNotification('Payment verification failed: ' + data.message, 'error');
+    }
+  } catch (error) {
+    console.error('Error verifying payment:', error);
+    showNotification('Error processing payment. Please contact support.', 'error');
+  }
+}
+
+/**
  * Initialize credits purchase form
  */
 let creditPackages = [];
@@ -157,7 +204,7 @@ async function initCreditsPurchase() {
   try {
     // Load packages from API
     const response = await fetch(`${API_BASE}/credits/packages`, {
-      credentials: 'include'
+      credentials: 'include'  // Include session cookies for authentication
     });
 
     if (response.ok) {
@@ -291,7 +338,7 @@ async function handlePurchase() {
       headers: {
         'Content-Type': 'application/json'
       },
-      credentials: 'include',
+      credentials: 'include',  // Include session cookies for authentication
       body: JSON.stringify(requestBody)
     });
 
@@ -299,11 +346,16 @@ async function handlePurchase() {
 
     if (data.success && data.data.url) {
       // Redirect to Stripe Checkout
+      console.log('Redirecting to Stripe Checkout...');
       window.location.href = data.data.url;
     } else if (data.success && data.data.mode === 'simulation') {
-      // Simulation mode
+      // Simulation mode - credits added directly
       showNotification('Payment simulated. Credits added!', 'success');
       await loadCreditsData();
+      // Update sidebar credit balance
+      if (typeof SidebarNav !== 'undefined') {
+        SidebarNav.loadCredits();
+      }
       purchaseBtn.textContent = originalText;
       purchaseBtn.disabled = false;
     } else {

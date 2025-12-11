@@ -31,6 +31,7 @@ class DatabaseService {
       fileSize,
       s3Key,
       fileHash,
+      pageCount = 1,
     } = fileData;
 
     // Determine file type based on mime type
@@ -47,9 +48,9 @@ class DatabaseService {
     const query = `
       INSERT INTO files (
         id, user_id, original_filename, stored_filename, file_type,
-        mime_type, file_size, s3_key, file_hash
+        mime_type, file_size, s3_key, file_hash, page_count
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
 
@@ -62,7 +63,8 @@ class DatabaseService {
       mimeType,
       fileSize,
       s3Key,
-      fileHash
+      fileHash,
+      pageCount
     ];
     const result = await this.pool.query(query, values);
     return result.rows[0];
@@ -114,17 +116,18 @@ class DatabaseService {
       fileId,
       userId,
       priority = 5,
+      pageCount = 1,
     } = taskData;
 
     const query = `
       INSERT INTO tasks (
-        id, file_id, user_id, priority, status
+        id, file_id, user_id, priority, status, page_count
       )
-      VALUES ($1, $2, $3, $4, 'pending')
+      VALUES ($1, $2, $3, $4, 'pending', $5)
       RETURNING *;
     `;
 
-    const values = [taskId, fileId, userId, priority];
+    const values = [taskId, fileId, userId, priority, pageCount];
     const result = await this.pool.query(query, values);
     return result.rows[0];
   }
@@ -143,6 +146,7 @@ class DatabaseService {
         r.s3_result_key,
         r.extracted_text,
         r.confidence_score,
+        r.structured_data,
         r.word_count,
         r.page_count,
         u.username,
@@ -154,6 +158,28 @@ class DatabaseService {
       WHERE t.id = $1;
     `;
     const result = await this.pool.query(query, [taskId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get task page result by format (html, json, txt)
+   * Queries task_pages table for specific format
+   */
+  async getTaskPageByFormat(taskId, formatType, pageNumber = 1) {
+    const query = `
+      SELECT
+        result_s3_key,
+        status,
+        processing_time_ms,
+        error_message
+      FROM task_pages
+      WHERE task_id = $1
+        AND format_type = $2
+        AND page_number = $3
+        AND status = 'completed'
+      LIMIT 1;
+    `;
+    const result = await this.pool.query(query, [taskId, formatType, pageNumber]);
     return result.rows[0] || null;
   }
 
@@ -350,6 +376,63 @@ class DatabaseService {
       RETURNING id;
     `;
     const result = await this.pool.query(query, [userId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Create a new user via Google OAuth
+   */
+  async createGoogleUser(userData) {
+    const {
+      id,
+      email,
+      username,
+      google_id,
+      first_name,
+      last_name,
+      auth_provider = 'google',
+      email_verified = true,
+      role = 'user'
+    } = userData;
+
+    const query = `
+      INSERT INTO users (
+        id, email, username, google_id, auth_provider, role, is_active,
+        email_verified, first_name, last_name
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)
+      RETURNING id, email, username, google_id, auth_provider, role, is_active,
+                email_verified, first_name, last_name, created_at, updated_at;
+    `;
+
+    const values = [id, email, username, google_id, auth_provider, role, email_verified, first_name, last_name];
+    const result = await this.pool.query(query, values);
+    return result.rows[0];
+  }
+
+  /**
+   * Get user by Google ID
+   */
+  async getUserByGoogleId(googleId) {
+    const query = 'SELECT * FROM users WHERE google_id = $1;';
+    const result = await this.pool.query(query, [googleId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Link Google account to existing user
+   */
+  async linkGoogleToUser(userId, googleId) {
+    const query = `
+      UPDATE users
+      SET google_id = $2,
+          linked_providers = linked_providers || '["google"]'::jsonb,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, email, username, google_id, auth_provider, role, is_active,
+                email_verified, first_name, last_name, linked_providers, created_at, updated_at;
+    `;
+    const result = await this.pool.query(query, [userId, googleId]);
     return result.rows[0] || null;
   }
 
@@ -1755,6 +1838,228 @@ class DatabaseService {
     `;
 
     const result = await this.pool.query(query, [folderId, limit, offset]);
+    return result.rows;
+  }
+
+  // =============================================
+  // Task Pages Methods (Page-Level Tracking)
+  // =============================================
+
+  /**
+   * Create a task page record
+   * @param {Object} pageData - Page data
+   * @returns {Promise<Object>} Created page record
+   */
+  async createTaskPage(pageData) {
+    const {
+      taskId,
+      pageNumber,
+      totalPages,
+      pageImageS3Key,
+      formatType = 'html',
+    } = pageData;
+
+    const query = `
+      INSERT INTO task_pages (
+        task_id, page_number, total_pages, page_image_s3_key, format_type, status
+      )
+      VALUES ($1, $2, $3, $4, $5, 'pending')
+      RETURNING *;
+    `;
+
+    const values = [taskId, pageNumber, totalPages, pageImageS3Key, formatType];
+    const result = await this.pool.query(query, values);
+    return result.rows[0];
+  }
+
+  /**
+   * Create multiple task page records in batch
+   * @param {Array<Object>} pagesData - Array of page data objects
+   * @returns {Promise<Array<Object>>} Created page records
+   */
+  async createTaskPages(pagesData) {
+    if (!pagesData || pagesData.length === 0) {
+      return [];
+    }
+
+    // Build multi-row INSERT
+    const valuesClauses = [];
+    const allValues = [];
+    let paramIndex = 1;
+
+    for (const page of pagesData) {
+      valuesClauses.push(
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, 'pending')`
+      );
+      allValues.push(
+        page.taskId,
+        page.pageNumber,
+        page.totalPages,
+        page.pageImageS3Key,
+        page.formatType || 'html'
+      );
+      paramIndex += 5;
+    }
+
+    const query = `
+      INSERT INTO task_pages (
+        task_id, page_number, total_pages, page_image_s3_key, format_type, status
+      )
+      VALUES ${valuesClauses.join(', ')}
+      RETURNING *;
+    `;
+
+    const result = await this.pool.query(query, allValues);
+    return result.rows;
+  }
+
+  /**
+   * Get all pages for a task
+   * @param {string} taskId - Task UUID
+   * @returns {Promise<Array<Object>>} Page records
+   */
+  async getTaskPages(taskId) {
+    const query = `
+      SELECT * FROM task_pages
+      WHERE task_id = $1
+      ORDER BY page_number ASC;
+    `;
+
+    const result = await this.pool.query(query, [taskId]);
+    return result.rows;
+  }
+
+  /**
+   * Get a specific page by task ID and page number
+   * @param {string} taskId - Task UUID
+   * @param {number} pageNumber - Page number
+   * @returns {Promise<Object|null>} Page record or null
+   */
+  async getTaskPage(taskId, pageNumber) {
+    const query = `
+      SELECT * FROM task_pages
+      WHERE task_id = $1 AND page_number = $2;
+    `;
+
+    const result = await this.pool.query(query, [taskId, pageNumber]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update task page status
+   * @param {string} taskId - Task UUID
+   * @param {number} pageNumber - Page number
+   * @param {string} status - New status ('pending', 'processing', 'completed', 'failed')
+   * @param {Object} updates - Additional fields to update
+   * @returns {Promise<Object>} Updated page record
+   */
+  async updateTaskPageStatus(taskId, pageNumber, status, updates = {}) {
+    const {
+      workerId = null,
+      resultS3Key = null,
+      processingTimeMs = null,
+      errorMessage = null,
+      retryCount = null,
+    } = updates;
+
+    // Build dynamic SET clause
+    const setClauses = ['status = $3'];
+    const values = [taskId, pageNumber, status];
+    let paramIndex = 4;
+
+    // Set timestamps based on status
+    if (status === 'processing') {
+      setClauses.push(`started_at = COALESCE(started_at, CURRENT_TIMESTAMP)`);
+    } else if (status === 'completed' || status === 'failed') {
+      setClauses.push(`completed_at = CURRENT_TIMESTAMP`);
+    }
+
+    if (workerId !== null) {
+      setClauses.push(`worker_id = $${paramIndex}`);
+      values.push(workerId);
+      paramIndex++;
+    }
+
+    if (resultS3Key !== null) {
+      setClauses.push(`result_s3_key = $${paramIndex}`);
+      values.push(resultS3Key);
+      paramIndex++;
+    }
+
+    if (processingTimeMs !== null) {
+      setClauses.push(`processing_time_ms = $${paramIndex}`);
+      values.push(processingTimeMs);
+      paramIndex++;
+    }
+
+    if (errorMessage !== null) {
+      setClauses.push(`error_message = $${paramIndex}`);
+      values.push(errorMessage);
+      paramIndex++;
+    }
+
+    if (retryCount !== null) {
+      setClauses.push(`retry_count = $${paramIndex}`);
+      values.push(retryCount);
+      paramIndex++;
+    }
+
+    const query = `
+      UPDATE task_pages
+      SET ${setClauses.join(', ')}
+      WHERE task_id = $1 AND page_number = $2
+      RETURNING *;
+    `;
+
+    const result = await this.pool.query(query, values);
+    return result.rows[0];
+  }
+
+  /**
+   * Get page processing overview for a task
+   * @param {string} taskId - Task UUID
+   * @returns {Promise<Object>} Overview statistics
+   */
+  async getTaskPageOverview(taskId) {
+    const query = `
+      SELECT
+        task_id,
+        COUNT(*) as total_pages,
+        COUNT(*) FILTER (WHERE status = 'completed') as pages_completed,
+        COUNT(*) FILTER (WHERE status = 'failed') as pages_failed,
+        COUNT(*) FILTER (WHERE status = 'processing') as pages_processing,
+        COUNT(*) FILTER (WHERE status = 'pending') as pages_pending,
+        ROUND(
+          100.0 * COUNT(*) FILTER (WHERE status = 'completed') / NULLIF(COUNT(*), 0),
+          1
+        ) as completion_percentage,
+        MIN(started_at) as first_page_started,
+        MAX(completed_at) as last_page_completed
+      FROM task_pages
+      WHERE task_id = $1
+      GROUP BY task_id;
+    `;
+
+    const result = await this.pool.query(query, [taskId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get pending pages across all tasks (for worker polling)
+   * @param {number} limit - Maximum pages to return
+   * @returns {Promise<Array<Object>>} Pending page records
+   */
+  async getPendingPages(limit = 10) {
+    const query = `
+      SELECT tp.*, t.priority, t.user_id
+      FROM task_pages tp
+      JOIN tasks t ON tp.task_id = t.id
+      WHERE tp.status = 'pending'
+      ORDER BY t.priority DESC, tp.created_at ASC
+      LIMIT $1;
+    `;
+
+    const result = await this.pool.query(query, [limit]);
     return result.rows;
   }
 }

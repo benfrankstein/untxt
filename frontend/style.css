@@ -16,6 +16,12 @@ body {
   color: var(--color-text-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Hide content until authentication check completes */
+  visibility: hidden;
+}
+
+body.auth-checked {
+  visibility: visible;
 }
 
 /* ========================================
@@ -682,10 +688,35 @@ body {
 .empty-state {
   grid-column: 1 / -1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 60vh;
-  padding: 2rem;
+  padding: 3rem 2rem;
+  text-align: center;
+}
+
+.empty-state svg {
+  color: rgba(123, 168, 46, 0.5);
+  margin-bottom: 1.5rem;
+}
+
+.empty-state p {
+  font-family: 'n27medium', sans-serif;
+  font-size: 1.125rem;
+  color: rgba(0, 0, 0, 0.7);
+  margin: 0 0 0.75rem 0;
+  line-height: 1.4;
+}
+
+.empty-state small {
+  font-family: 'n27', sans-serif;
+  font-size: 0.9375rem;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1.6;
+  max-width: 400px;
+  display: block;
+  margin: 0 auto;
 }
 
 /* ========================================
@@ -1179,7 +1210,8 @@ body {
 /* OCR & View Buttons */
 .btn-ocr,
 .btn-ocr-disabled,
-.btn-view {
+.btn-view,
+.btn-close-viewer {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1243,6 +1275,30 @@ body {
 }
 
 .btn-view svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Close Viewer Button */
+.btn-close-viewer {
+  border: 2px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+}
+
+.btn-close-viewer:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(123, 168, 46, 0.3);
+}
+
+.btn-close-viewer:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-close-viewer svg {
   width: 16px;
   height: 16px;
 }
@@ -3376,6 +3432,54 @@ body {
   box-shadow: none;
 }
 
+/* Delete confirmation modal styling */
+.modal-confirm {
+  text-align: center;
+  max-width: 400px !important;
+}
+
+.modal-confirm-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.modal-confirm-icon svg {
+  color: #ef4444;
+  opacity: 0.9;
+}
+
+.modal-confirm-message {
+  color: #6b7280;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin: 1rem 0 1.5rem 0;
+}
+
+.btn-modal-danger {
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.5rem;
+  font-family: 'n27medium', sans-serif;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: 1px solid #ef4444;
+  background: #ef4444;
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-modal-danger:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-modal-danger:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
 /* ==========================================
    INLINE VIEWER
    ========================================== */
@@ -3743,4 +3847,150 @@ body {
 
 .btn-save-preset:hover {
   background: var(--primary-hover);
+}
+
+/* ==========================================
+   DRAG AND DROP ENHANCEMENTS
+   ========================================== */
+
+.document-card[draggable="true"] {
+  cursor: move;
+  user-select: none;
+}
+
+.document-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.folder-item.drag-over {
+  background: rgba(199, 255, 0, 0.15);
+  border-left: 3px solid var(--primary);
+  padding-left: calc(0.75rem - 3px);
+  transition: all 0.2s;
+}
+
+.folder-item {
+  transition: background 0.2s, border-left 0.2s;
+}
+
+/* ==========================================
+   TOAST NOTIFICATIONS
+   ========================================== */
+
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: var(--gray-900, #1f2937);
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(1rem) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10000;
+  max-width: 320px;
+  min-width: 200px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3), 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3), 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.toast-info {
+  background: var(--primary, #c7ff00);
+  color: var(--gray-900, #111827);
+  box-shadow: 0 10px 25px rgba(199, 255, 0, 0.3), 0 4px 12px rgba(199, 255, 0, 0.2);
+}
+
+/* Toast animations for multiple toasts */
+.toast:nth-child(n+2) {
+  bottom: calc(2rem + 4.5rem * (var(--toast-index, 1)));
+}
+
+@media (max-width: 640px) {
+  .toast {
+    bottom: 1rem;
+    right: 1rem;
+    left: 1rem;
+    max-width: none;
+  }
+}
+
+/* ==========================================
+   FOLDER MENU IMPROVEMENTS
+   ========================================== */
+
+.folder-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--gray-700, #374151);
+  transition: background 0.2s;
+  border-radius: 4px;
+}
+
+.folder-menu-item:hover {
+  background: var(--gray-50, #f9fafb);
+}
+
+.folder-menu-item.delete {
+  color: #ef4444;
+}
+
+.folder-menu-item.delete:hover {
+  background: #fef2f2;
+}
+
+.folder-menu-item svg {
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   MAIN DOCUMENT VIEWER (TAB-BASED)
+   Uses same styling as inline-viewer
+   ========================================== */
+
+.main-document-viewer {
+  background: rgba(123, 168, 46, 0.08);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.viewer-document-header {
+  margin-bottom: 1.5rem;
+}
+
+.viewer-document-title {
+  font-family: 'n27bold', sans-serif;
+  font-size: 1.125rem;
+  color: rgba(0, 0, 0, 0.9);
+  margin: 0;
 }

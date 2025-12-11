@@ -44,40 +44,7 @@
             </svg>
             <span class="project-name">New Project</span>
           </button>
-
-          <!-- Existing Projects -->
-          <div class="project-item-wrapper">
-            <a href="#" class="project-item" data-project-id="test">
-              <svg class="project-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
-              <span class="project-name">TESTPROJECT</span>
-            </a>
-            <button class="project-menu-btn" data-project-id="test">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <circle cx="12" cy="12" r="2"></circle>
-                <circle cx="5" cy="12" r="2"></circle>
-                <circle cx="19" cy="12" r="2"></circle>
-              </svg>
-            </button>
-            <div class="project-context-menu" data-project-id="test">
-              <button class="context-menu-item" data-action="rename">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-                <span>Rename Project</span>
-              </button>
-              <button class="context-menu-item context-menu-item-danger" data-action="delete">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                <span>Delete Project</span>
-              </button>
-            </div>
-          </div>
-          <!-- More projects will be loaded dynamically -->
+          <!-- Projects will be loaded dynamically from folders database -->
         </div>
       </div>
     </nav>
@@ -204,7 +171,7 @@
       <!-- Project Documents -->
       <section class="recent-section">
         <div class="project-header">
-          <h2 id="projectNameHeader">TESTPROJECT</h2>
+          <h2 id="projectNameHeader">Loading...</h2>
         </div>
 
         <!-- Upload Zone -->
@@ -288,114 +255,70 @@
               </div>
             </div>
 
-            <!-- Document Preview with Optional Side Panel -->
-            <div class="document-viewer-layout">
+            <!-- Main Document Viewer (Tab-Based) -->
+            <div class="main-document-viewer">
 
-              <!-- Main Document Preview -->
-              <div class="content-card document-preview-main">
-                <div class="card-header">
-                  <h4>Document Preview</h4>
-                  <div class="preview-controls">
-                    <!-- View Toggle -->
-                    <div class="preview-toggle">
-                      <button class="toggle-btn active" data-view="untxt" id="toggleUntxt">UNTXT</button>
-                      <button class="toggle-btn" data-view="original" id="toggleOriginal">Original</button>
-                    </div>
-                    <!-- Toggle Extracted Text Panel -->
-                    <button class="btn-toggle-text" id="toggleExtractedText" title="Toggle Extracted Text">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 6h16M4 12h16M4 18h16"></path>
-                      </svg>
-                      <span>Extracted Text</span>
-                    </button>
-                  </div>
-                </div>
-                <div class="card-body">
-                  <!-- Preview Container (HIPAA-Compliant In-Memory Caching) -->
-                  <!-- Shows UNTXT HTML by default, Original PDF on demand -->
-                  <div class="preview-container-card" id="previewContainerCard">
-                    <div class="preview-placeholder">
-                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                      </svg>
-                      <p>Document Preview</p>
-                    </div>
-                  </div>
-                </div>
+              <!-- Document Title Header -->
+              <div class="viewer-document-header">
+                <h3 class="viewer-document-title" id="viewerDocTitle">document.pdf</h3>
               </div>
 
-              <!-- Side Panel: Extracted Text (Hidden by default) -->
-              <div class="content-card extracted-text-panel hidden" id="extractedTextPanel">
-                <div class="card-header">
-                  <h4>Extracted Text</h4>
-                  <div style="display: flex; gap: 8px;">
-                    <button class="btn-copy-header" id="copyTextHeaderBtn" title="Copy text">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
-                    </button>
-                    <button class="btn-close-panel" id="closeExtractedText" title="Close">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div class="card-body">
-                  <div class="text-preview-content" id="extractedTextPreview">
-                    <p class="text-loading">Loading text preview...</p>
-                  </div>
-                </div>
+              <!-- Format Tabs -->
+              <div class="inline-viewer-tabs">
+                <button class="inline-viewer-tab active" data-format="html" id="mainTabHtml">HTML</button>
+                <button class="inline-viewer-tab" data-format="txt" id="mainTabTxt">TXT</button>
+                <button class="inline-viewer-tab" data-format="json" id="mainTabJson">JSON</button>
               </div>
 
-            </div>
-
-            <!-- Bottom: Metrics and Actions -->
-            <div class="bottom-section">
-
-              <!-- Metrics -->
-              <div class="result-stats-inline">
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="charCount">0</span>
-                  <span class="stat-label">characters</span>
-                </div>
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="wordCount">0</span>
-                  <span class="stat-label">words</span>
-                </div>
-                <div class="result-stat-compact">
-                  <span class="stat-value" id="confidence">0%</span>
-                  <span class="stat-label">confidence</span>
-                </div>
+              <!-- Download Toolbar -->
+              <div class="inline-viewer-download-toolbar">
+                <button class="btn-download-format" data-download="html" id="mainDownloadHtml">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download HTML
+                </button>
+                <button class="btn-download-format" data-download="txt" id="mainDownloadTxt">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download TXT
+                </button>
+                <button class="btn-download-format" data-download="json" id="mainDownloadJson">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download JSON
+                </button>
+                <button class="btn-download-all" data-download="all" id="mainDownloadAll">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                  Download All
+                </button>
               </div>
 
-              <!-- Actions -->
-              <div class="result-actions">
-                <button class="btn-primary" id="downloadResultBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  Download Result
-                </button>
-                <button class="btn-secondary" id="downloadOriginalBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                  </svg>
-                  Download Original
-                </button>
-                <button class="btn-danger" id="deleteTaskBtn">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                  Delete
-                </button>
+              <!-- Content Wrapper -->
+              <div class="inline-viewer-content-wrapper" id="mainViewerContentWrapper">
+                <div class="json-field-selector" id="mainJsonSelector" style="display: none;">
+                  <div class="json-selector-header">
+                    <button class="json-preset-dropdown" type="button">
+                      <span class="json-preset-text">Select Preset...</span>
+                      <svg class="json-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9l6 6 6-6"></path>
+                      </svg>
+                    </button>
+                    <div class="json-preset-menu" style="display: none;"></div>
+                  </div>
+                  <div class="json-field-list"></div>
+                  <div class="json-selector-actions">
+                    <input type="text" class="json-preset-name" placeholder="Preset name..." />
+                    <button class="btn-save-preset">Save Preset</button>
+                  </div>
+                </div>
+                <div class="inline-viewer-content format-html" id="mainViewerContent">
+                  <p style="text-align: center; color: rgba(0,0,0,0.4); padding: 3rem;">Use the main viewer to see document content</p>
+                </div>
               </div>
 
             </div>
@@ -493,6 +416,54 @@
           <button class="btn-modal-cancel" id="formatModalCancel">Cancel</button>
           <button class="btn-modal-confirm" id="formatModalConfirm">Process</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New/Edit Folder Modal -->
+  <div class="modal-overlay" id="newFolderModal">
+    <div class="modal-content">
+      <h2 class="modal-title" id="folderModalTitle">Create New Project</h2>
+
+      <form id="folderForm">
+        <div class="form-group">
+          <label for="folderName">Project Name</label>
+          <input type="text" id="folderName" placeholder="Enter project name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="folderDescription">Description (optional)</label>
+          <textarea id="folderDescription" placeholder="Enter project description" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="folderColor">Color</label>
+          <input type="color" id="folderColor" value="#c7ff00">
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-modal-cancel" id="cancelFolderBtn">Cancel</button>
+          <button type="button" class="btn-modal-confirm" id="saveFolderBtn">Create Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteConfirmModal">
+    <div class="modal-content modal-confirm">
+      <div class="modal-confirm-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+      </div>
+      <h2 class="modal-title" id="deleteConfirmTitle">Delete Project?</h2>
+      <p class="modal-confirm-message" id="deleteConfirmMessage"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-modal-cancel" id="cancelDeleteBtn">Cancel</button>
+        <button type="button" class="btn-modal-danger" id="confirmDeleteBtn">Delete</button>
       </div>
     </div>
   </div>

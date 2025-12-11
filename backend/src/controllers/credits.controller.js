@@ -14,7 +14,7 @@ class CreditsController {
    */
   async getBalance(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
 
       if (!userId) {
         return res.status(401).json({
@@ -49,7 +49,7 @@ class CreditsController {
    */
   async getStats(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
 
       if (!userId) {
         return res.status(401).json({
@@ -105,7 +105,7 @@ class CreditsController {
    */
   async initiatePurchase(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const { packageId } = req.body;
 
       if (!userId) {
@@ -154,7 +154,7 @@ class CreditsController {
    */
   async getHistory(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const limit = parseInt(req.query.limit) || 50;
       const offset = parseInt(req.query.offset) || 0;
 
@@ -232,7 +232,7 @@ class CreditsController {
         });
       }
 
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const { packageId } = req.body;
 
       if (!userId) {
@@ -278,7 +278,7 @@ class CreditsController {
    */
   async getPaymentHistory(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const limit = parseInt(req.query.limit) || 50;
       const offset = parseInt(req.query.offset) || 0;
 
@@ -315,7 +315,7 @@ class CreditsController {
    */
   async verifyPayment(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const { sessionId } = req.body;
 
       if (!userId) {
@@ -356,7 +356,7 @@ class CreditsController {
    */
   async validateCredits(req, res) {
     try {
-      const userId = req.user?.id || req.headers['x-user-id'];
+      const userId = req.session?.userId || req.user?.id || req.headers['x-user-id'];
       const { requiredCredits } = req.body;
 
       if (!userId) {

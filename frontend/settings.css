@@ -9,6 +9,12 @@ html, body {
   overflow-x: hidden;
 }
 
+body {
+  font-family: var(--font-family-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* App Wrapper (Pushed by main Sidebar) */
 .app-wrapper {
   margin-left: 260px;
