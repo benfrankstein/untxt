@@ -6,7 +6,7 @@
   <title>UNTXT - Document OCR</title>
   <link rel="stylesheet" href="base.css?v=13">
   <link rel="stylesheet" href="sidebar-nav.css?v=31">
-  <link rel="stylesheet" href="style.css?v=94">
+  <link rel="stylesheet" href="style.css?v=95">
 </head>
 <body>
 
@@ -438,12 +438,6 @@
 
   </main>
 
-  <!-- WebSocket Status (subtle indicator) -->
-  <div class="ws-indicator" id="wsIndicator">
-    <div class="ws-dot"></div>
-    <span class="ws-tooltip">Live updates</span>
-  </div>
-
   <!-- Format Selection Modal -->
   <div class="modal-overlay" id="formatModal">
     <div class="modal-content">
@@ -497,11 +491,227 @@
     </div>
   </div>
 
+  <!-- KVP Configuration Modal -->
+  <div class="modal-overlay" id="kvpConfigModal">
+    <div class="modal-content modal-kvp-config">
+      <!-- Close Button Row -->
+      <div class="modal-close-row">
+        <button class="modal-close" id="closeKvpConfigModal">&times;</button>
+      </div>
+
+      <!-- Tab Bar -->
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="kvp" type="button">KEY-VALUE PAIRS</button>
+        <button class="modal-tab" data-tab="anon" type="button">ANONYMIZATION</button>
+        <button class="modal-tab" data-tab="text" type="button">EXTRACT CLEAN TEXT</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="kvp-layout">
+          <!-- Left Sidebar: Files -->
+          <div class="kvp-layout-sidebar">
+            <label class="kvp-config-label">FILES (<span class="kvp-file-count">0</span>)</label>
+            <div class="kvp-file-list">
+              <label class="kvp-file-item kvp-select-all-row">
+                <input type="checkbox" id="kvpSelectAllFiles" />
+                <span class="kvp-file-name">Select all</span>
+              </label>
+              <div class="kvp-file-list-items">
+                <!-- Dynamically populated with checkboxes -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Main: Tab Panels -->
+          <div class="kvp-layout-main">
+            <!-- KVP Tab Panel -->
+            <div class="tab-panel active" data-panel="kvp">
+              <!-- Enable Toggle Row -->
+              <div class="panel-enable-row">
+                <label class="panel-enable-toggle" title="Enable Key-Value Pair extraction">
+                  <input type="checkbox" id="kvpEnabled" checked />
+                  <span class="panel-toggle-slider"></span>
+                </label>
+                <span class="panel-enable-label">Enable extraction</span>
+              </div>
+              <div class="panel-content">
+              <!-- Sector Selection -->
+              <div class="kvp-config-section kvp-section-highlighted">
+                <label class="kvp-config-label">SECTOR</label>
+              <div class="kvp-sector-dropdown-wrapper">
+                <button class="kvp-sector-dropdown" type="button">
+                  <span class="kvp-sector-text">Select sector...</span>
+                  <svg class="kvp-sector-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </button>
+                <div class="kvp-sector-menu" style="display: none;">
+                  <input type="text" class="kvp-sector-search" placeholder="Search sectors..." />
+                  <div class="kvp-sector-list"></div>
+                </div>
+              </div>
+              <div class="kvp-selected-sectors"></div>
+            </div>
+
+            <!-- Preset Selection -->
+            <div class="kvp-config-section kvp-section-highlighted">
+              <label class="kvp-config-label">PRESET</label>
+              <div class="kvp-preset-row">
+                <div class="kvp-preset-dropdown-wrapper">
+                  <button class="kvp-preset-dropdown" type="button">
+                    <span class="kvp-preset-text">Select preset...</span>
+                    <svg class="kvp-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M6 9l6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="kvp-preset-menu" style="display: none;"></div>
+                </div>
+              </div>
+
+              <!-- Custom Field Input -->
+              <div class="kvp-custom-field-row">
+                <input type="text" class="kvp-custom-field-input" placeholder="Add custom field..." />
+                <button class="kvp-custom-field-add" type="button">+</button>
+              </div>
+
+              <!-- Save as Preset -->
+              <div class="kvp-save-preset-row">
+                <input type="text" class="kvp-preset-name-input" id="kvpPresetNameInput" placeholder="Preset name..." />
+                <button class="kvp-save-preset-btn" id="kvpSavePreset">Save</button>
+              </div>
+            </div>
+
+            <!-- Field Selection -->
+            <div class="kvp-config-section">
+              <label class="kvp-config-label">KEY-VALUE PAIRS TO EXTRACT</label>
+              <div class="kvp-field-list">
+                <!-- Select All -->
+                <label class="kvp-select-all">
+                  <input type="checkbox" class="kvp-select-all-checkbox" checked />
+                  <span>Select All</span>
+                </label>
+                <div class="kvp-field-divider"></div>
+                <!-- Document Fields Section -->
+                <div class="kvp-field-section kvp-document-fields">
+                  <div class="kvp-section-content"></div>
+                </div>
+                <!-- Sector Fields (dynamic) -->
+                <div class="kvp-sector-fields-container"></div>
+              </div>
+            </div>
+              </div><!-- End panel-content -->
+            </div><!-- End KVP Tab Panel -->
+
+            <!-- ANON Tab Panel -->
+            <div class="tab-panel" data-panel="anon">
+              <!-- Enable Toggle Row -->
+              <div class="panel-enable-row">
+                <label class="panel-enable-toggle" title="Enable Anonymization">
+                  <input type="checkbox" id="anonEnabled" />
+                  <span class="panel-toggle-slider"></span>
+                </label>
+                <span class="panel-enable-label">Enable anonymization</span>
+              </div>
+              <div class="panel-content">
+              <!-- Category Selection -->
+              <div class="kvp-config-section kvp-section-highlighted">
+                <label class="kvp-config-label">CATEGORY</label>
+                <div class="anon-category-dropdown-wrapper">
+                  <button class="anon-category-dropdown" type="button">
+                    <span class="anon-category-text">Select category...</span>
+                    <svg class="anon-category-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M6 9l6 6 6-6"></path>
+                    </svg>
+                  </button>
+                  <div class="anon-category-menu" style="display: none;">
+                    <div class="anon-category-list"></div>
+                  </div>
+                </div>
+                <div class="anon-selected-categories"></div>
+              </div>
+
+              <!-- Preset Selection -->
+              <div class="kvp-config-section kvp-section-highlighted">
+                <label class="kvp-config-label">PRESET</label>
+                <div class="anon-preset-row">
+                  <div class="anon-preset-dropdown-wrapper">
+                    <button class="anon-preset-dropdown" type="button">
+                      <span class="anon-preset-text">Select preset...</span>
+                      <svg class="anon-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9l6 6 6-6"></path>
+                      </svg>
+                    </button>
+                    <div class="anon-preset-menu" style="display: none;"></div>
+                  </div>
+                </div>
+
+                <!-- Custom Entity Input -->
+                <div class="anon-custom-entity-row">
+                  <input type="text" class="anon-custom-entity-input" placeholder="Add custom entity..." />
+                  <button class="anon-custom-entity-add" type="button">+</button>
+                </div>
+
+                <!-- Save as Preset -->
+                <div class="anon-save-preset-row">
+                  <input type="text" class="anon-preset-name-input" id="anonPresetNameInput" placeholder="Preset name..." />
+                  <button class="anon-save-preset-btn" id="anonSavePreset">Save</button>
+                </div>
+              </div>
+
+              <!-- Entity Selection -->
+              <div class="kvp-config-section">
+                <label class="kvp-config-label">ENTITIES TO ANONYMIZE</label>
+                <div class="anon-entity-list">
+                  <!-- Select All -->
+                  <label class="anon-select-all">
+                    <input type="checkbox" class="anon-select-all-checkbox" checked />
+                    <span>Select All</span>
+                  </label>
+                  <div class="anon-entity-divider"></div>
+                  <!-- Category Entities (dynamic) -->
+                  <div class="anon-category-entities-container"></div>
+                </div>
+              </div>
+              </div><!-- End panel-content -->
+            </div><!-- End ANON Tab Panel -->
+
+            <!-- Extract Text Tab Panel -->
+            <div class="tab-panel" data-panel="text">
+              <!-- Enable Toggle Row -->
+              <div class="panel-enable-row">
+                <label class="panel-enable-toggle" title="Enable Clean Text extraction">
+                  <input type="checkbox" id="textEnabled" />
+                  <span class="panel-toggle-slider"></span>
+                </label>
+                <span class="panel-enable-label">Enable text extraction</span>
+              </div>
+              <div class="panel-content">
+              <div class="kvp-config-section">
+                <p class="text-extract-info">
+                  Text will be extracted in reading order as plain text.
+                </p>
+              </div>
+              </div><!-- End panel-content -->
+            </div><!-- End Text Tab Panel -->
+
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer kvp-modal-footer">
+        <div class="kvp-footer-actions">
+          <button class="btn-modal-cancel" id="kvpCancel">Cancel</button>
+          <button class="btn-modal-confirm" id="kvpProcess">Process <span class="kvp-file-count-btn">0</span> Files</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div> <!-- End .app-wrapper -->
 
   <script src="https://js.stripe.com/v3/"></script>
   <script src="sidebar-nav.js?v=15"></script>
-  <script src="app.js?v=55"></script>
+  <script src="app.js?v=56"></script>
   <script src="credits.js"></script>
   <script>
     // Initialize sidebar navigation

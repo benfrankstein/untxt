@@ -40,6 +40,37 @@ let lastAutoSaveTime = null;
 // Automatically cleared on logout, session end, or navigation away
 const pdfCache = new Map(); // taskId -> { blobUrl: string, timestamp: number }
 
+// ==========================================
+// MASTER KVP DATA (23 Sector Templates)
+// ==========================================
+let masterKvpData = null;
+
+async function loadMasterKvps() {
+  try {
+    const response = await fetch('/master_kvps.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    masterKvpData = await response.json();
+    console.log(`✓ Loaded ${Object.keys(masterKvpData.sectors).length} sectors with ${masterKvpData.total_canonical_keys} KVP keys`);
+  } catch (err) {
+    console.error('Failed to load master KVPs:', err);
+    masterKvpData = { sectors: {} };
+  }
+}
+
+function getSectorList() {
+  if (!masterKvpData || !masterKvpData.sectors) return [];
+  return Object.entries(masterKvpData.sectors).map(([id, sector]) => ({
+    id,
+    name: sector.name,
+    count: sector.kvps ? sector.kvps.length : 0
+  })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getSectorKvps(sectorId) {
+  if (!masterKvpData || !masterKvpData.sectors || !masterKvpData.sectors[sectorId]) return [];
+  return masterKvpData.sectors[sectorId].kvps.map(kvp => kvp.key);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   // Check if user is authenticated
@@ -52,10 +83,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize inactivity tracking (15 minute timeout)
   initInactivityTracking();
 
+  // Load master KVP data for sector templates (non-blocking)
+  loadMasterKvps();
+
   initUpload();
   initFormatModal();
+  initKvpConfigModal();
   initEmptyStateUpload();
   initWebSocket();
+
+  // Debug mode toggle (press 'C' to show cell boundaries)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'c' || e.key === 'C') {
+      // Don't toggle if user is typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      document.body.classList.toggle('debug-mode');
+      console.log('Debug mode:', document.body.classList.contains('debug-mode') ? 'ON' : 'OFF');
+    }
+  });
   initFolders();
   await loadFolders();
   await loadTasks();
@@ -146,17 +191,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Render files list
   renderFilesList();
-
-  // Handle View button clicks - expand inline viewer
-  document.addEventListener('click', (e) => {
-    const viewBtn = e.target.closest('.btn-view');
-    if (viewBtn) {
-      e.stopPropagation();
-      const row = viewBtn.closest('.file-row');
-      const fileName = row.querySelector('.file-name').textContent.trim();
-      toggleInlineViewer(row, fileName);
-    }
-  });
 
   document.getElementById('deleteTaskBtn')?.addEventListener('click', () => deleteTaskFromViewer(currentTask.id));
   document.getElementById('retryBtn')?.addEventListener('click', retryTask);
@@ -454,17 +488,84 @@ function updateProcessingStatus(status) {
 // FILES LIST RENDERING
 // ==========================================
 
+// Helper to render profile dropdown for file list cells
+function renderProfileDropdown(fileName, type, profiles, selectedProfile) {
+  const defaultLabel = type === 'kvp' ? 'Extract All' : 'Anonymize All';
+  const displayName = selectedProfile || defaultLabel;
+  const dropdownId = `profile-${type}-${fileName.replace(/[^a-z0-9]/gi, '-')}`;
+
+  return `
+    <div class="file-profile-cell">
+      <button class="file-profile-dropdown" data-file="${fileName}" data-type="${type}" id="${dropdownId}">
+        <span class="file-profile-text">${displayName}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="file-profile-menu" data-file="${fileName}" data-type="${type}">
+        <button class="file-profile-option${!selectedProfile ? ' selected' : ''}" data-value="">${defaultLabel}</button>
+        ${profiles.map(p => `
+          <button class="file-profile-option${selectedProfile === p.name ? ' selected' : ''}" data-value="${p.name}">${p.name}</button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// File data and sorting state
+let filesData = [
+  { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Completed' },
+  { name: 'Invoice_March.pdf', size: '156 KB', pages: 1, date: 'Jan 14, 2025', status: 'Processing', progress: 67, eta: '30 sec' },
+  { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Completed' },
+  { name: 'Contract_Final.pdf', size: '1.2 MB', pages: 15, date: 'Jan 10, 2025', status: 'Completed' },
+  { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Completed' }
+];
+
+let sortState = { column: null, direction: 'asc' };
+
+function sortFiles(column) {
+  // Toggle direction if same column
+  if (sortState.column === column) {
+    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortState.column = column;
+    sortState.direction = 'asc';
+  }
+
+  filesData.sort((a, b) => {
+    let valA, valB;
+
+    if (column === 'name') {
+      valA = a.name.toLowerCase();
+      valB = b.name.toLowerCase();
+    } else if (column === 'date') {
+      valA = new Date(a.date);
+      valB = new Date(b.date);
+    } else if (column === 'pages') {
+      valA = a.pages;
+      valB = b.pages;
+    } else if (column === 'status') {
+      valA = a.status.toLowerCase();
+      valB = b.status.toLowerCase();
+    }
+
+    if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+    if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  renderFilesList();
+}
+
 function renderFilesList() {
   const grid = document.getElementById('documentGrid');
 
-  // Mock file data
-  const mockFiles = [
-    { name: 'Annual Report 2024.pdf', size: '2.4 MB', pages: 42, date: 'Jan 15, 2025', status: 'Completed' },
-    { name: 'Invoice_March.pdf', size: '156 KB', pages: 1, date: 'Jan 14, 2025', status: 'Processing', progress: 67, eta: '30 sec' },
-    { name: 'Meeting Notes.pdf', size: '890 KB', pages: 8, date: 'Jan 12, 2025', status: 'Completed' },
-    { name: 'Contract_Final.pdf', size: '1.2 MB', pages: 15, date: 'Jan 10, 2025', status: 'Completed' },
-    { name: 'Presentation Slides.pdf', size: '5.8 MB', pages: 67, date: 'Jan 8, 2025', status: 'Completed' }
-  ];
+  // Use the sortable filesData
+  const mockFiles = filesData;
+
+  // Get available profiles
+  const kvpProfiles = getPresets();
+  const anonProfiles = getAnonProfiles();
 
   grid.innerHTML = `
     <div class="files-list-container">
@@ -474,11 +575,26 @@ function renderFilesList() {
             <th class="checkbox-col">
               <input type="checkbox" id="selectAllFiles" class="file-checkbox">
             </th>
-            <th class="sortable">Name</th>
-            <th class="sortable"># of Pages</th>
-            <th class="sortable">Status</th>
-            <th>Action</th>
-            <th></th>
+            <th class="sortable col-name" data-sort="name">
+              Name
+              <svg class="sort-icon ${sortState.column === 'name' ? 'active' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                ${sortState.column === 'name' && sortState.direction === 'desc'
+                  ? '<path d="M12 5v14M5 12l7 7 7-7"/>'
+                  : '<path d="M12 19V5M5 12l7-7 7 7"/>'}
+              </svg>
+            </th>
+            <th class="sortable col-date-uploaded" data-sort="date">
+              Date Uploaded
+              <svg class="sort-icon ${sortState.column === 'date' ? 'active' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                ${sortState.column === 'date' && sortState.direction === 'desc'
+                  ? '<path d="M12 5v14M5 12l7 7 7-7"/>'
+                  : '<path d="M12 19V5M5 12l7-7 7 7"/>'}
+              </svg>
+            </th>
+            <th class="sortable col-pages" data-sort="pages"># Pages</th>
+            <th class="sortable col-status" data-sort="status">Status</th>
+            <th class="col-review">Review</th>
+            <th class="col-menu"></th>
           </tr>
         </thead>
         <tbody>
@@ -502,24 +618,10 @@ function renderFilesList() {
               statusCell = `<span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>`;
             }
 
-            // Action button - only show View for completed files
-            let actionButton = '';
-            if (isCompleted) {
-              actionButton = `
-                <button class="btn-view">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                    <circle cx="12" cy="12" r="3"></circle>
-                  </svg>
-                  View
-                </button>
-              `;
-            }
-
             return `
-              <tr class="file-row">
+              <tr class="file-row" data-file="${file.name}">
                 <td class="checkbox-col">
-                  <input type="checkbox" class="file-checkbox" data-file-name="${file.name}">
+                  <input type="checkbox" class="file-checkbox" data-file-name="${file.name}"${isProcessing ? ' disabled' : ''}>
                 </td>
                 <td class="file-name">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -528,12 +630,13 @@ function renderFilesList() {
                   </svg>
                   ${file.name}
                 </td>
+                <td class="file-date-uploaded">${file.date}</td>
                 <td class="file-pages">${file.pages}</td>
                 <td class="file-status">
                   ${statusCell}
                 </td>
-                <td class="file-action">
-                  ${actionButton}
+                <td class="file-review">
+                  <button class="review-btn" data-file="${file.name}"${isCompleted ? '' : ' disabled'}>Review</button>
                 </td>
                 <td class="file-menu-cell">
                   <button class="file-menu-btn" data-file="${file.name}">
@@ -551,7 +654,7 @@ function renderFilesList() {
                       </svg>
                       <span>Rename</span>
                     </button>
-                    <button class="context-menu-item" data-action="download">
+                    <button class="context-menu-item" data-action="download-original">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -574,18 +677,316 @@ function renderFilesList() {
         </tbody>
       </table>
     </div>
+
+    <!-- Bulk Action Bar -->
+    <div class="bulk-action-bar" id="bulkActionBar">
+      <div class="selection-info">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 11 12 14 22 4"></polyline>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+        <span><span class="selection-count" id="bulkSelectionCount">0</span> files selected</span>
+      </div>
+      <div class="bar-actions">
+        <div class="bar-toggles">
+          <label class="bar-toggle">
+            <input type="checkbox" id="downloadKvp" checked />
+            <span class="bar-toggle-slider"></span>
+            <span class="bar-toggle-label">Key-Value Pairs</span>
+          </label>
+          <label class="bar-toggle">
+            <input type="checkbox" id="downloadAnon" />
+            <span class="bar-toggle-slider"></span>
+            <span class="bar-toggle-label">Anonymized Text</span>
+          </label>
+          <label class="bar-toggle">
+            <input type="checkbox" id="downloadPlain" />
+            <span class="bar-toggle-slider"></span>
+            <span class="bar-toggle-label">Plain Text</span>
+          </label>
+        </div>
+        <button class="bar-btn bar-download-btn" id="bulkDownloadBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Download</span>
+        </button>
+      </div>
+    </div>
   `;
+
+  // Helper to get selected file names
+  function getSelectedFileNames() {
+    const checkedBoxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles):not(:disabled):checked');
+    return Array.from(checkedBoxes).map(cb => cb.dataset.fileName);
+  }
+
+  // Helper to update selection count display
+  function updateSelectionCount() {
+    const count = getSelectedFileNames().length;
+
+    // Update bulk action bar count
+    const bulkSelectionCount = document.getElementById('bulkSelectionCount');
+    if (bulkSelectionCount) {
+      bulkSelectionCount.textContent = count;
+    }
+  }
+
+  // Setup sortable column headers
+  const sortableHeaders = document.querySelectorAll('.sortable[data-sort]');
+  sortableHeaders.forEach(header => {
+    header.addEventListener('click', () => {
+      const column = header.dataset.sort;
+      sortFiles(column);
+    });
+  });
 
   // Setup "Select All" checkbox functionality
   const selectAllCheckbox = document.getElementById('selectAllFiles');
   if (selectAllCheckbox) {
     selectAllCheckbox.addEventListener('change', (e) => {
-      const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles)');
+      const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles):not(:disabled)');
       fileCheckboxes.forEach(checkbox => {
         checkbox.checked = e.target.checked;
       });
+      updateSelectionCount();
     });
   }
+
+  // Setup individual checkbox change handlers
+  const fileCheckboxes = document.querySelectorAll('.file-checkbox:not(#selectAllFiles)');
+  fileCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateSelectionCount);
+  });
+
+  // Setup per-row profile dropdowns
+  const profileDropdowns = document.querySelectorAll('.file-profile-dropdown');
+  const profileMenus = document.querySelectorAll('.file-profile-menu');
+
+  profileDropdowns.forEach(dropdown => {
+    dropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fileName = dropdown.dataset.file;
+      const type = dropdown.dataset.type;
+      const menu = document.querySelector(`.file-profile-menu[data-file="${fileName}"][data-type="${type}"]`);
+
+      // Close all other menus
+      closeAllDropdowns();
+      menu.classList.toggle('show');
+    });
+  });
+
+  // Handle per-row profile selection
+  profileMenus.forEach(menu => {
+    menu.addEventListener('click', (e) => {
+      const option = e.target.closest('.file-profile-option');
+      if (!option) return;
+
+      e.stopPropagation();
+      const fileName = menu.dataset.file;
+      const type = menu.dataset.type;
+      const value = option.dataset.value;
+
+      // Save the assignment
+      setFileProfileAssignment(fileName, type, value || null);
+
+      // Update dropdown display
+      const dropdown = document.querySelector(`.file-profile-dropdown[data-file="${fileName}"][data-type="${type}"]`);
+      const textSpan = dropdown.querySelector('.file-profile-text');
+      const defaultLabel = type === 'kvp' ? 'Extract All' : 'Anonymize All';
+      textSpan.textContent = value || defaultLabel;
+
+      // Update selected state
+      menu.querySelectorAll('.file-profile-option').forEach(opt => opt.classList.remove('selected'));
+      option.classList.add('selected');
+
+      menu.classList.remove('show');
+    });
+  });
+
+  // Setup header dropdown buttons (bulk actions)
+  const headerKvpBtn = document.getElementById('headerKvpDropdown');
+  const headerKvpMenu = document.getElementById('headerKvpMenu');
+  const headerAnonBtn = document.getElementById('headerAnonDropdown');
+  const headerAnonMenu = document.getElementById('headerAnonMenu');
+  const headerDownloadBtn = document.getElementById('headerDownloadDropdown');
+  const headerDownloadMenu = document.getElementById('headerDownloadMenu');
+
+  // Close all dropdowns helper
+  function closeAllDropdowns() {
+    headerKvpMenu?.classList.remove('show');
+    headerAnonMenu?.classList.remove('show');
+    headerDownloadMenu?.classList.remove('show');
+    profileMenus.forEach(m => m.classList.remove('show'));
+    document.querySelectorAll('.download-dropdown-menu').forEach(m => m.classList.remove('show'));
+    // Close bulk action bar dropdowns
+    document.querySelectorAll('.bar-dropdown-menu').forEach(m => m.classList.remove('show'));
+  }
+
+  // Header KVP dropdown
+  headerKvpBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = headerKvpMenu.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) headerKvpMenu.classList.add('show');
+  });
+
+  // Header ANON dropdown
+  headerAnonBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = headerAnonMenu.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) headerAnonMenu.classList.add('show');
+  });
+
+  // Header Download dropdown
+  headerDownloadBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = headerDownloadMenu.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) headerDownloadMenu.classList.add('show');
+  });
+
+  // Handle header KVP profile apply
+  headerKvpMenu?.addEventListener('click', (e) => {
+    const item = e.target.closest('.header-dropdown-item');
+    if (!item) return;
+
+    const profileName = item.dataset.value || null;
+    const selectedFiles = getSelectedFileNames();
+
+    if (selectedFiles.length === 0) {
+      alert('Please select files first');
+      headerKvpMenu.classList.remove('show');
+      return;
+    }
+
+    bulkSetFileProfileAssignment(selectedFiles, 'kvp', profileName);
+
+    // Update UI for each selected file
+    selectedFiles.forEach(fileName => {
+      const textSpan = document.querySelector(`.file-profile-dropdown[data-file="${fileName}"][data-type="kvp"] .file-profile-text`);
+      if (textSpan) {
+        textSpan.textContent = profileName || 'Extract All';
+      }
+    });
+
+    headerKvpMenu.classList.remove('show');
+  });
+
+  // Handle header ANON profile apply
+  headerAnonMenu?.addEventListener('click', (e) => {
+    const item = e.target.closest('.header-dropdown-item');
+    if (!item) return;
+
+    const profileName = item.dataset.value || null;
+    const selectedFiles = getSelectedFileNames();
+
+    if (selectedFiles.length === 0) {
+      alert('Please select files first');
+      headerAnonMenu.classList.remove('show');
+      return;
+    }
+
+    bulkSetFileProfileAssignment(selectedFiles, 'anon', profileName);
+
+    // Update UI for each selected file
+    selectedFiles.forEach(fileName => {
+      const textSpan = document.querySelector(`.file-profile-dropdown[data-file="${fileName}"][data-type="anon"] .file-profile-text`);
+      if (textSpan) {
+        textSpan.textContent = profileName || 'Anonymize All';
+      }
+    });
+
+    headerAnonMenu.classList.remove('show');
+  });
+
+  // Handle header bulk download
+  headerDownloadMenu?.addEventListener('click', (e) => {
+    const item = e.target.closest('.header-dropdown-item');
+    if (!item) return;
+
+    const format = item.dataset.format;
+    const selectedFiles = getSelectedFileNames();
+
+    if (selectedFiles.length === 0) {
+      alert('Please select files first');
+      headerDownloadMenu.classList.remove('show');
+      return;
+    }
+
+    downloadSelectedFiles(selectedFiles, format);
+    headerDownloadMenu.classList.remove('show');
+  });
+
+  // Setup bulk download button
+  const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
+
+  bulkDownloadBtn?.addEventListener('click', () => {
+    const selectedFiles = getSelectedFileNames();
+    if (selectedFiles.length === 0) return;
+
+    const downloadKvp = document.getElementById('downloadKvp')?.checked;
+    const downloadAnon = document.getElementById('downloadAnon')?.checked;
+    const downloadPlain = document.getElementById('downloadPlain')?.checked;
+
+    // Build formats array based on toggles
+    const formats = [];
+    if (downloadKvp) formats.push('kvp');
+    if (downloadAnon) formats.push('anon');
+    if (downloadPlain) formats.push('txt');
+
+    if (formats.length === 0) {
+      alert('Please select at least one download format.');
+      return;
+    }
+
+    // Download each format
+    formats.forEach(format => {
+      downloadSelectedFiles(selectedFiles, format);
+    });
+  });
+
+  // Setup per-row download dropdown
+  const downloadDropdownBtns = document.querySelectorAll('.btn-download-icon');
+  downloadDropdownBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fileName = btn.dataset.file;
+      const menu = document.querySelector(`.download-dropdown-menu[data-file="${fileName}"]`);
+
+      closeAllDropdowns();
+      menu?.classList.toggle('show');
+    });
+  });
+
+  // Handle per-row download format selection
+  const downloadMenus = document.querySelectorAll('.download-dropdown-menu');
+  downloadMenus.forEach(menu => {
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('.download-dropdown-item');
+      if (!item) return;
+
+      e.stopPropagation();
+      const fileName = menu.dataset.file;
+      const format = item.dataset.format;
+
+      downloadFile(fileName, format);
+      menu.classList.remove('show');
+    });
+  });
+
+  // Close all dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.header-dropdown-wrapper') &&
+        !e.target.closest('.file-profile-cell') &&
+        !e.target.closest('.download-dropdown-wrapper') &&
+        !e.target.closest('.bar-dropdown')) {
+      closeAllDropdowns();
+    }
+  });
 
   // Setup file context menu functionality
   const menuButtons = document.querySelectorAll('.file-menu-btn');
@@ -632,12 +1033,13 @@ function renderFilesList() {
           console.log(`Rename: ${fileName} → ${newName}`);
           // TODO: Implement rename API call
         }
-      } else if (action === 'download') {
+      } else if (action === 'download-original') {
         console.log(`Download original: ${fileName}`);
         // TODO: Implement download original API call
       } else if (action === 'delete') {
         if (confirm(`Delete "${fileName}"?`)) {
           console.log(`Delete: ${fileName}`);
+          clearFileProfileAssignment(fileName);
           // TODO: Implement delete API call
         }
       }
@@ -646,479 +1048,77 @@ function renderFilesList() {
 }
 
 // ==========================================
-// INLINE VIEWER
-// ==========================================
-
-// Mock document data
-const mockDocuments = {
-  'annual-report-2024.pdf': {
-    html: `<h1>Annual Report 2024</h1>
-      <p>This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.</p>
-
-      <h2>Executive Summary</h2>
-      <p>The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.</p>
-      <p>Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.</p>
-
-      <h2>Financial Summary</h2>
-      <p><strong>Revenue:</strong> $1,234,567,890</p>
-      <p><strong>Operating Expenses:</strong> $890,123,456</p>
-      <p><strong>Net Income:</strong> $344,444,434</p>
-      <p><strong>EBITDA:</strong> $456,789,012</p>
-      <p><strong>Total Assets:</strong> $2,345,678,901</p>
-      <p><strong>Shareholder Equity:</strong> $1,567,890,123</p>
-
-      <h2>Market Performance</h2>
-      <p>Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.</p>
-      <p>Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.</p>
-
-      <h2>Operational Highlights</h2>
-      <p>Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.</p>
-      <p>Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.</p>
-
-      <h2>Future Outlook</h2>
-      <p>Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.</p>
-      <p>We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.</p>`,
-    txt: `Annual Report 2024
-
-This comprehensive annual report provides a detailed overview of our company's performance throughout the fiscal year 2024. Our organization has demonstrated remarkable resilience and growth despite challenging market conditions, achieving significant milestones across all business units.
-
-Executive Summary
-The year 2024 marked a transformative period for our organization. We successfully expanded into three new markets, launched five innovative product lines, and strengthened our position as an industry leader. Our strategic initiatives focused on digital transformation, customer experience enhancement, and operational excellence have yielded exceptional results.
-
-Key highlights include a 23% increase in year-over-year revenue, successful integration of acquired subsidiaries, and the establishment of strategic partnerships with major industry players. Our commitment to sustainability and corporate social responsibility has also been recognized with several prestigious awards.
-
-Financial Summary
-Revenue: $1,234,567,890
-Operating Expenses: $890,123,456
-Net Income: $344,444,434
-EBITDA: $456,789,012
-Total Assets: $2,345,678,901
-Shareholder Equity: $1,567,890,123
-
-Market Performance
-Our stock price increased by 34% over the fiscal year, outperforming the broader market index by 12 percentage points. We successfully completed two debt refinancing operations, reducing our overall cost of capital and improving our credit rating to AA+. The company declared quarterly dividends totaling $2.50 per share, representing a 15% increase from the previous year.
-
-Trading volume reached record highs, with average daily transactions exceeding 5 million shares. Our market capitalization grew to $8.9 billion, placing us among the top 50 companies in our sector globally.
-
-Operational Highlights
-Our operational efficiency improved dramatically through the implementation of advanced automation systems and AI-driven analytics. Manufacturing output increased by 28% while maintaining quality standards, and our supply chain optimization initiatives reduced logistics costs by 17%.
-
-Customer satisfaction scores reached an all-time high of 94%, driven by our enhanced customer service platform and personalized engagement strategies. We processed over 12 million customer transactions with a 99.7% satisfaction rate.
-
-Future Outlook
-Looking ahead to 2025, we are well-positioned for continued growth and innovation. Our pipeline includes several high-potential projects in emerging technologies, planned expansions into Asian and Latin American markets, and strategic investments in sustainable business practices.
-
-We anticipate revenue growth of 18-22% in the coming year, supported by strong demand for our core products and successful market penetration of new offerings. Our board has approved a capital expenditure budget of $450 million for infrastructure upgrades and technology investments.`,
-    json: JSON.stringify({
-      title: 'Annual Report 2024',
-      company_name: 'Acme Corporation',
-      fiscal_year: 2024,
-      report_type: 'annual',
-      report_date: '2024-12-31',
-      pages: 156,
-      revenue: 1234567890,
-      operating_expenses: 890123456,
-      net_income: 344444434,
-      ebitda: 456789012,
-      total_assets: 2345678901,
-      shareholder_equity: 1567890123,
-      stock_price_change: '34%',
-      market_cap: '8.9B',
-      credit_rating: 'AA+',
-      quarterly_dividend: 2.50,
-      dividend_yield: 2.8,
-      earnings_per_share: 12.45,
-      price_to_earnings: 18.2,
-      return_on_equity: 22.0,
-      debt_to_equity: 0.49,
-      current_ratio: 2.1,
-      employee_count: 8450,
-      offices_worldwide: 34,
-      countries_operating: 67,
-      ceo_name: 'Jane Thompson',
-      cfo_name: 'Michael Chen',
-      auditor: 'Ernst & Young LLP',
-      processed_date: '2025-01-15',
-      file_size_mb: 12.8,
-      language: 'English',
-      customer_satisfaction: 94
-    }, null, 2)
-  },
-  'invoice_march.pdf': {
-    html: '<h1>Invoice</h1><p><strong>Invoice #:</strong> INV-2024-003</p><p><strong>Date:</strong> March 1, 2024</p><h2>Line Items</h2><ul><li>Service A - $100.00</li><li>Service B - $56.00</li></ul><p><strong>Total:</strong> $156.00</p>',
-    txt: 'Invoice\n\nInvoice #: INV-2024-003\nDate: March 1, 2024\n\nLine Items\n- Service A - $100.00\n- Service B - $56.00\n\nTotal: $156.00',
-    json: JSON.stringify({
-      invoice_number: 'INV-2024-003',
-      date: '2024-03-01',
-      line_items: [
-        { description: 'Service A', amount: 100.00 },
-        { description: 'Service B', amount: 56.00 }
-      ],
-      total: 156.00,
-      currency: 'USD'
-    }, null, 2)
-  },
-  'meeting-notes.pdf': {
-    html: '<h1>Meeting Notes</h1><p><strong>Date:</strong> January 12, 2025</p><h2>Attendees</h2><ul><li>John Doe</li><li>Jane Smith</li><li>Bob Johnson</li></ul><h2>Agenda</h2><ol><li>Project Updates</li><li>Budget Review</li><li>Next Steps</li></ol>',
-    txt: 'Meeting Notes\n\nDate: January 12, 2025\n\nAttendees\n- John Doe\n- Jane Smith\n- Bob Johnson\n\nAgenda\n1. Project Updates\n2. Budget Review\n3. Next Steps',
-    json: JSON.stringify({
-      meeting_date: '2025-01-12',
-      attendees: ['John Doe', 'Jane Smith', 'Bob Johnson'],
-      agenda: ['Project Updates', 'Budget Review', 'Next Steps'],
-      type: 'meeting_notes'
-    }, null, 2)
-  },
-  'contract_final.pdf': {
-    html: '<h1>Contract Agreement</h1><p>This agreement entered into on January 10, 2025...</p>',
-    txt: 'Contract Agreement\n\nThis agreement entered into on January 10, 2025...',
-    json: JSON.stringify({ type: 'contract', date: '2025-01-10' }, null, 2)
-  },
-  'presentation-slides.pdf': {
-    html: '<h1>Presentation</h1><p>Slide content here...</p>',
-    txt: 'Presentation\n\nSlide content here...',
-    json: JSON.stringify({ type: 'presentation', slides: 67 }, null, 2)
-  }
-};
-
-function toggleInlineViewer(row, fileName) {
-  const table = row.closest('tbody');
-  const existingViewer = table.querySelector('.inline-viewer-row');
-  const viewBtn = row.querySelector('.btn-view');
-
-  // If viewer is already open, close it
-  if (existingViewer) {
-    existingViewer.classList.add('closing');
-    // Remove class from the row
-    const openRow = table.querySelector('.file-row.has-drawer-open');
-
-    // Restore button to "View"
-    if (viewBtn) {
-      viewBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-          <circle cx="12" cy="12" r="3"></circle>
-        </svg>
-        View
-      `;
-    }
-
-    setTimeout(() => {
-      if (openRow) {
-        openRow.classList.remove('has-drawer-open');
-      }
-      existingViewer.remove();
-    }, 400);
-    return;
-  }
-
-  // Transform button to "Close"
-  if (viewBtn) {
-    viewBtn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M18 6L6 18M6 6l12 12"></path>
-      </svg>
-      Close
-    `;
-  }
-
-  // Add class to current row
-  row.classList.add('has-drawer-open');
-
-  // Get document data
-  const docKey = fileName.toLowerCase().replace(/\s+/g, '-');
-  const docData = mockDocuments[docKey] || {
-    html: '<p>No HTML content available</p>',
-    txt: 'No text content available',
-    json: JSON.stringify({ error: 'No data available' }, null, 2)
-  };
-
-  // Create viewer row
-  const viewerRow = document.createElement('tr');
-  viewerRow.className = 'inline-viewer-row';
-  viewerRow.innerHTML = `
-    <td colspan="6">
-      <div class="inline-viewer-slide-wrapper">
-        <div class="inline-viewer">
-          <div class="inline-viewer-header">
-            <h3 class="inline-viewer-title">${fileName}</h3>
-          </div>
-
-          <div class="inline-viewer-tabs">
-            <button class="inline-viewer-tab active" data-format="html">HTML</button>
-            <button class="inline-viewer-tab" data-format="txt">TXT</button>
-            <button class="inline-viewer-tab" data-format="json">JSON</button>
-          </div>
-
-          <div class="inline-viewer-download-toolbar">
-            <button class="btn-download-format" data-download="html">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Download HTML
-            </button>
-            <button class="btn-download-format" data-download="txt">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Download TXT
-            </button>
-            <button class="btn-download-format" data-download="json">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Download JSON
-            </button>
-            <button class="btn-download-all" data-download="all">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Download All
-            </button>
-          </div>
-
-          <div class="inline-viewer-content-wrapper">
-            <div class="json-field-selector" style="display: none;">
-              <div class="json-selector-header">
-                <button class="json-preset-dropdown" type="button">
-                  <span class="json-preset-text">Select Preset...</span>
-                  <svg class="json-preset-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M6 9l6 6 6-6"></path>
-                  </svg>
-                </button>
-                <div class="json-preset-menu" style="display: none;"></div>
-              </div>
-              <div class="json-field-list"></div>
-              <div class="json-selector-actions">
-                <input type="text" class="json-preset-name" placeholder="Preset name..." />
-                <button class="btn-save-preset">Save Preset</button>
-              </div>
-            </div>
-            <div class="inline-viewer-content format-html">${docData.html}</div>
-          </div>
-        </div>
-      </div>
-    </td>
-  `;
-
-  // Insert viewer after current row
-  row.after(viewerRow);
-
-  // Setup tab switching
-  const tabs = viewerRow.querySelectorAll('.inline-viewer-tab');
-  const content = viewerRow.querySelector('.inline-viewer-content');
-  const jsonSelector = viewerRow.querySelector('.json-field-selector');
-  const contentWrapper = viewerRow.querySelector('.inline-viewer-content-wrapper');
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-
-      const format = tab.dataset.format;
-      content.className = `inline-viewer-content format-${format}`;
-
-      if (format === 'html') {
-        content.innerHTML = docData.html;
-        jsonSelector.style.display = 'none';
-        contentWrapper.classList.remove('has-json-sidebar');
-      } else if (format === 'txt') {
-        content.textContent = docData.txt;
-        jsonSelector.style.display = 'none';
-        contentWrapper.classList.remove('has-json-sidebar');
-      } else if (format === 'json') {
-        jsonSelector.style.display = 'flex';
-        contentWrapper.classList.add('has-json-sidebar');
-        initJsonFieldSelector(viewerRow, docData.json, fileName);
-      }
-    });
-  });
-
-  // Setup download buttons
-  const downloadButtons = viewerRow.querySelectorAll('[data-download]');
-  downloadButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const downloadType = btn.dataset.download;
-
-      if (downloadType === 'all') {
-        // Download all three formats as a ZIP (for now, download individually)
-        downloadFile(docData.html, `${fileName}.html`, 'text/html');
-        setTimeout(() => downloadFile(docData.txt, `${fileName}.txt`, 'text/plain'), 100);
-        setTimeout(() => downloadFile(docData.json, `${fileName}.json`, 'application/json'), 200);
-      } else if (downloadType === 'html') {
-        downloadFile(docData.html, `${fileName}.html`, 'text/html');
-      } else if (downloadType === 'txt') {
-        downloadFile(docData.txt, `${fileName}.txt`, 'text/plain');
-      } else if (downloadType === 'json') {
-        downloadFile(docData.json, `${fileName}.json`, 'application/json');
-      }
-    });
-  });
-}
-
-// Helper function to trigger file download
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-// ==========================================
 // JSON FIELD SELECTOR & PRESET MANAGEMENT
 // ==========================================
-
-function initJsonFieldSelector(viewerRow, jsonString, fileName) {
-  const jsonData = JSON.parse(jsonString);
-  const fields = extractJsonFields(jsonData);
-  const fieldList = viewerRow.querySelector('.json-field-list');
-  const content = viewerRow.querySelector('.inline-viewer-content');
-  const presetDropdown = viewerRow.querySelector('.json-preset-dropdown');
-  const presetText = viewerRow.querySelector('.json-preset-text');
-  const presetMenu = viewerRow.querySelector('.json-preset-menu');
-  const presetNameInput = viewerRow.querySelector('.json-preset-name');
-  const savePresetBtn = viewerRow.querySelector('.btn-save-preset');
-
-  // Load saved presets
-  loadPresetsIntoMenu(presetMenu);
-
-  // Toggle dropdown menu
-  presetDropdown.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = presetMenu.style.display === 'block';
-    presetMenu.style.display = isOpen ? 'none' : 'block';
-    presetDropdown.classList.toggle('open', !isOpen);
-  });
-
-  // Close dropdown when clicking outside
-  document.addEventListener('click', () => {
-    presetMenu.style.display = 'none';
-    presetDropdown.classList.remove('open');
-  });
-
-  // Populate field checkboxes
-  fieldList.innerHTML = '';
-  fields.forEach(field => {
-    const label = document.createElement('label');
-    label.className = 'json-field-item';
-    label.innerHTML = `
-      <input type="checkbox" value="${field}" checked />
-      <span>${field}</span>
-    `;
-    fieldList.appendChild(label);
-  });
-
-  // Update JSON when checkboxes change
-  const checkboxes = fieldList.querySelectorAll('input[type="checkbox"]');
-  checkboxes.forEach(cb => {
-    cb.addEventListener('change', () => {
-      updateFilteredJson(jsonData, checkboxes, content);
-    });
-  });
-
-  // Handle preset selection
-  presetMenu.addEventListener('click', (e) => {
-    const item = e.target.closest('.json-preset-item');
-    if (!item) return;
-
-    const presetValue = item.dataset.value;
-    presetText.textContent = item.textContent;
-    presetMenu.style.display = 'none';
-    presetDropdown.classList.remove('open');
-
-    if (presetValue === '__all__') {
-      checkboxes.forEach(cb => cb.checked = true);
-      updateFilteredJson(jsonData, checkboxes, content);
-    } else {
-      const presets = getPresets();
-      const preset = presets.find(p => p.name === presetValue);
-      if (preset) {
-        checkboxes.forEach(cb => {
-          cb.checked = preset.fields.includes(cb.value);
-        });
-        updateFilteredJson(jsonData, checkboxes, content);
-      }
-    }
-  });
-
-  // Save preset button
-  savePresetBtn.addEventListener('click', () => {
-    const presetName = presetNameInput.value.trim();
-    if (!presetName) {
-      alert('Please enter a preset name');
-      return;
-    }
-
-    const selectedFields = Array.from(checkboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.value);
-
-    if (selectedFields.length === 0) {
-      alert('Please select at least one field');
-      return;
-    }
-
-    savePreset(presetName, selectedFields);
-    loadPresetsIntoMenu(presetMenu);
-    presetNameInput.value = '';
-    alert(`Preset "${presetName}" saved!`);
-  });
-
-  // Initial render
-  updateFilteredJson(jsonData, checkboxes, content);
-}
-
-function extractJsonFields(obj) {
-  let fields = [];
-  for (const key in obj) {
-    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-      fields = fields.concat(extractJsonFields(obj[key]));
-    } else {
-      fields.push(key);
-    }
-  }
-  return fields;
-}
-
-function updateFilteredJson(jsonData, checkboxes, contentElement) {
-  const selectedFields = Array.from(checkboxes)
-    .filter(cb => cb.checked)
-    .map(cb => cb.value);
-
-  const filteredData = filterJsonByFields(jsonData, selectedFields);
-  contentElement.textContent = JSON.stringify(filteredData, null, 2);
-}
-
-function filterJsonByFields(obj, fields) {
-  const result = {};
-  fields.forEach(field => {
-    if (field in obj) {
-      result[field] = obj[field];
-    }
-  });
-  return result;
-}
 
 function getPresets() {
   const presetsJson = localStorage.getItem('jsonPresets');
   return presetsJson ? JSON.parse(presetsJson) : [];
 }
 
-function savePreset(name, fields) {
+function savePreset(name, fields, sectorIds = [], customFields = []) {
   const presets = getPresets();
   const existingIndex = presets.findIndex(p => p.name === name);
 
+  const presetData = { name, fields, sectorIds, customFields };
+
   if (existingIndex >= 0) {
-    presets[existingIndex].fields = fields;
+    presets[existingIndex] = presetData;
   } else {
-    presets.push({ name, fields });
+    presets.push(presetData);
   }
 
   localStorage.setItem('jsonPresets', JSON.stringify(presets));
+}
+
+function deletePreset(name) {
+  const presets = getPresets();
+  const filtered = presets.filter(p => p.name !== name);
+  localStorage.setItem('jsonPresets', JSON.stringify(filtered));
+}
+
+function renamePreset(oldName, newName) {
+  const presets = getPresets();
+  const preset = presets.find(p => p.name === oldName);
+  if (preset) {
+    preset.name = newName;
+    localStorage.setItem('jsonPresets', JSON.stringify(presets));
+  }
+}
+
+// ==========================================
+// ANON PRESET MANAGEMENT
+// ==========================================
+
+function getAnonPresets() {
+  try {
+    const presetsJson = localStorage.getItem('anonPresets');
+    return presetsJson ? JSON.parse(presetsJson) : [];
+  } catch (e) {
+    console.error('Error loading anon presets:', e);
+    return [];
+  }
+}
+
+function saveAnonPreset(name, categories, entities, customEntities = []) {
+  const presets = getAnonPresets();
+  const existingIndex = presets.findIndex(p => p.name === name);
+
+  const presetData = { name, categories, entities, customEntities };
+
+  if (existingIndex >= 0) {
+    presets[existingIndex] = presetData;
+  } else {
+    presets.push(presetData);
+  }
+
+  localStorage.setItem('anonPresets', JSON.stringify(presets));
+}
+
+function deleteAnonPreset(name) {
+  const presets = getAnonPresets();
+  const filtered = presets.filter(p => p.name !== name);
+  localStorage.setItem('anonPresets', JSON.stringify(filtered));
 }
 
 function loadPresetsIntoMenu(menu) {
@@ -1140,14 +1140,360 @@ function loadPresetsIntoMenu(menu) {
     menu.appendChild(separator);
   }
 
-  // Add saved presets
+  // Add saved presets with context menu
   presets.forEach(preset => {
+    // Wrapper div
+    const wrapper = document.createElement('div');
+    wrapper.className = 'json-preset-item-wrapper';
+
+    // Clickable preset name
     const item = document.createElement('div');
     item.className = 'json-preset-item';
     item.dataset.value = preset.name;
     item.textContent = preset.name;
-    menu.appendChild(item);
+
+    // Three-dots button (horizontal)
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'json-preset-menu-btn';
+    menuBtn.type = 'button';
+    menuBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="5" cy="12" r="2"></circle>
+        <circle cx="12" cy="12" r="2"></circle>
+        <circle cx="19" cy="12" r="2"></circle>
+      </svg>
+    `;
+
+    // Context menu
+    const contextMenu = document.createElement('div');
+    contextMenu.className = 'json-preset-context-menu';
+    contextMenu.dataset.preset = preset.name;
+    contextMenu.innerHTML = `
+      <button class="context-menu-item" data-action="rename" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        <span>Rename</span>
+      </button>
+      <button class="context-menu-item context-menu-item-danger" data-action="delete" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Delete</span>
+      </button>
+    `;
+
+    // Three-dots button click handler
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close all other preset context menus
+      document.querySelectorAll('.json-preset-context-menu.show').forEach(m => {
+        if (m !== contextMenu) m.classList.remove('show');
+      });
+
+      // Position context menu using fixed positioning
+      if (!contextMenu.classList.contains('show')) {
+        const btnRect = menuBtn.getBoundingClientRect();
+        contextMenu.style.top = `${btnRect.bottom + 4}px`;
+        contextMenu.style.left = `${btnRect.right - 140}px`; // Align right edge with button
+      }
+      contextMenu.classList.toggle('show');
+    });
+
+    // Context menu action handlers
+    contextMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const actionBtn = e.target.closest('.context-menu-item');
+      if (!actionBtn) return;
+
+      const action = actionBtn.dataset.action;
+      const presetName = contextMenu.dataset.preset;
+      contextMenu.classList.remove('show');
+
+      if (action === 'rename') {
+        const newName = prompt('Enter new preset name:', presetName);
+        if (newName && newName.trim() && newName !== presetName) {
+          // Check for duplicate names
+          const existingPresets = getPresets();
+          if (existingPresets.some(p => p.name === newName.trim())) {
+            alert('A preset with this name already exists.');
+            return;
+          }
+          renamePreset(presetName, newName.trim());
+          loadPresetsIntoMenu(menu);
+          // Update dropdown text if this preset was selected
+          const presetText = menu.closest('.json-selector-header').querySelector('.json-preset-text');
+          if (presetText && presetText.textContent === presetName) {
+            presetText.textContent = newName.trim();
+          }
+        }
+      } else if (action === 'delete') {
+        if (confirm(`Delete preset "${presetName}"?`)) {
+          deletePreset(presetName);
+          loadPresetsIntoMenu(menu);
+          // Reset dropdown text if this preset was selected
+          const presetText = menu.closest('.json-selector-header').querySelector('.json-preset-text');
+          if (presetText && presetText.textContent === presetName) {
+            presetText.textContent = 'Select Preset...';
+          }
+        }
+      }
+    });
+
+    wrapper.appendChild(item);
+    wrapper.appendChild(menuBtn);
+    wrapper.appendChild(contextMenu);
+    menu.appendChild(wrapper);
   });
+}
+
+// ANON Profile Functions
+function getAnonProfiles() {
+  const profilesJson = localStorage.getItem('anonProfiles');
+  return profilesJson ? JSON.parse(profilesJson) : [];
+}
+
+function saveAnonProfile(name, selectedEntities) {
+  const profiles = getAnonProfiles();
+  const existingIndex = profiles.findIndex(p => p.name === name);
+
+  // Convert Sets to Arrays for storage
+  const profileData = {
+    name,
+    selectedEntities: {
+      names: Array.from(selectedEntities.names),
+      emails: Array.from(selectedEntities.emails),
+      phones: Array.from(selectedEntities.phones),
+      values: Array.from(selectedEntities.values),
+      ssn: Array.from(selectedEntities.ssn),
+      addresses: Array.from(selectedEntities.addresses)
+    }
+  };
+
+  if (existingIndex >= 0) {
+    profiles[existingIndex] = profileData;
+  } else {
+    profiles.push(profileData);
+  }
+
+  localStorage.setItem('anonProfiles', JSON.stringify(profiles));
+}
+
+function deleteAnonProfile(name) {
+  const profiles = getAnonProfiles();
+  const filtered = profiles.filter(p => p.name !== name);
+  localStorage.setItem('anonProfiles', JSON.stringify(filtered));
+}
+
+function renameAnonProfile(oldName, newName) {
+  const profiles = getAnonProfiles();
+  const profile = profiles.find(p => p.name === oldName);
+  if (profile) {
+    profile.name = newName;
+    localStorage.setItem('anonProfiles', JSON.stringify(profiles));
+  }
+}
+
+// ============================================================
+// FILE PROFILE ASSIGNMENTS
+// Per-file KVP and ANON profile assignments stored in localStorage
+// ============================================================
+
+const FILE_PROFILE_ASSIGNMENTS_KEY = 'fileProfileAssignments';
+const DEFAULT_PROFILES_KEY = 'defaultProfiles';
+
+// Get all file profile assignments
+function getFileProfileAssignments() {
+  const data = localStorage.getItem(FILE_PROFILE_ASSIGNMENTS_KEY);
+  return data ? JSON.parse(data) : {};
+}
+
+// Save all file profile assignments
+function saveFileProfileAssignments(assignments) {
+  localStorage.setItem(FILE_PROFILE_ASSIGNMENTS_KEY, JSON.stringify(assignments));
+}
+
+// Get profile assignment for a specific file
+function getFileProfileAssignment(fileName, type = null) {
+  const assignments = getFileProfileAssignments();
+  const fileAssignment = assignments[fileName] || { kvpProfile: null, anonProfile: null };
+  if (type === 'kvp') return fileAssignment.kvpProfile;
+  if (type === 'anon') return fileAssignment.anonProfile;
+  return fileAssignment;
+}
+
+// Set profile assignment for a specific file
+function setFileProfileAssignment(fileName, type, profileName) {
+  const assignments = getFileProfileAssignments();
+  if (!assignments[fileName]) {
+    assignments[fileName] = { kvpProfile: null, anonProfile: null };
+  }
+  if (type === 'kvp') {
+    assignments[fileName].kvpProfile = profileName;
+  } else if (type === 'anon') {
+    assignments[fileName].anonProfile = profileName;
+  }
+  saveFileProfileAssignments(assignments);
+}
+
+// Clear profile assignments for a file (when file is deleted)
+function clearFileProfileAssignment(fileName) {
+  const assignments = getFileProfileAssignments();
+  delete assignments[fileName];
+  saveFileProfileAssignments(assignments);
+}
+
+// Bulk set profile for multiple files
+function bulkSetFileProfileAssignment(fileNames, type, profileName) {
+  const assignments = getFileProfileAssignments();
+  fileNames.forEach(fileName => {
+    if (!assignments[fileName]) {
+      assignments[fileName] = { kvpProfile: null, anonProfile: null };
+    }
+    if (type === 'kvp') {
+      assignments[fileName].kvpProfile = profileName;
+    } else if (type === 'anon') {
+      assignments[fileName].anonProfile = profileName;
+    }
+  });
+  saveFileProfileAssignments(assignments);
+}
+
+// Get default profiles
+function getDefaultProfiles() {
+  const data = localStorage.getItem(DEFAULT_PROFILES_KEY);
+  return data ? JSON.parse(data) : { kvpProfile: null, anonProfile: null };
+}
+
+// Get default KVP profile
+function getDefaultKvpProfile() {
+  return getDefaultProfiles().kvpProfile;
+}
+
+// Set default KVP profile
+function setDefaultKvpProfile(profileName) {
+  const defaults = getDefaultProfiles();
+  defaults.kvpProfile = profileName;
+  localStorage.setItem(DEFAULT_PROFILES_KEY, JSON.stringify(defaults));
+}
+
+// Get default ANON profile
+function getDefaultAnonProfile() {
+  return getDefaultProfiles().anonProfile;
+}
+
+// Set default ANON profile
+function setDefaultAnonProfile(profileName) {
+  const defaults = getDefaultProfiles();
+  defaults.anonProfile = profileName;
+  localStorage.setItem(DEFAULT_PROFILES_KEY, JSON.stringify(defaults));
+}
+
+// Get effective profile for a file (file-specific or default)
+function getEffectiveProfile(fileName, type) {
+  const fileProfile = getFileProfileAssignment(fileName, type);
+  if (fileProfile) return fileProfile;
+
+  if (type === 'kvp') return getDefaultKvpProfile();
+  if (type === 'anon') return getDefaultAnonProfile();
+  return null;
+}
+
+// Handle profile deletion - clear assignments that reference deleted profile
+function handleProfileDeletion(profileName, type) {
+  const assignments = getFileProfileAssignments();
+  let changed = false;
+
+  Object.keys(assignments).forEach(fileName => {
+    if (type === 'kvp' && assignments[fileName].kvpProfile === profileName) {
+      assignments[fileName].kvpProfile = null;
+      changed = true;
+    } else if (type === 'anon' && assignments[fileName].anonProfile === profileName) {
+      assignments[fileName].anonProfile = null;
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    saveFileProfileAssignments(assignments);
+  }
+
+  // Also clear default if it was the deleted profile
+  const defaults = getDefaultProfiles();
+  if (type === 'kvp' && defaults.kvpProfile === profileName) {
+    setDefaultKvpProfile(null);
+  } else if (type === 'anon' && defaults.anonProfile === profileName) {
+    setDefaultAnonProfile(null);
+  }
+}
+
+// ============================================================
+// DOWNLOAD FUNCTIONS
+// Per-file and bulk download with profile-based output generation
+// ============================================================
+
+// Format labels for download
+const FORMAT_LABELS = {
+  kvp: 'KVP (JSON)',
+  anon: 'ANON (TXT)',
+  txt: 'Plain Text',
+  all: 'All Formats'
+};
+
+// Download a single file with its assigned profiles applied
+function downloadFile(fileName, format = 'all') {
+  const assignments = getFileProfileAssignment(fileName);
+  const kvpProfile = assignments.kvpProfile || getDefaultKvpProfile();
+  const anonProfile = assignments.anonProfile || getDefaultAnonProfile();
+
+  console.log(`Downloading ${fileName} [${format}] with profiles:`, { kvpProfile, anonProfile });
+
+  // In a real implementation, this would:
+  // 1. Apply KVP profile to generate structured JSON output
+  // 2. Apply ANON profile to generate anonymized text
+  // 3. Generate download based on requested format
+
+  const formatLabel = FORMAT_LABELS[format] || format;
+  const profileInfo = [];
+  if (kvpProfile) profileInfo.push(`KVP: ${kvpProfile}`);
+  if (anonProfile) profileInfo.push(`ANON: ${anonProfile}`);
+
+  const profileStr = profileInfo.length > 0 ? profileInfo.join(', ') : 'Default settings';
+
+  alert(`[Mock Download]\n\nFile: ${fileName}\nFormat: ${formatLabel}\nProfiles: ${profileStr}`);
+}
+
+// Download multiple selected files
+function downloadSelectedFiles(fileNames, format = 'all') {
+  if (fileNames.length === 0) return;
+
+  console.log(`Bulk download: ${fileNames.length} files [${format}]`, fileNames);
+
+  const formatLabel = FORMAT_LABELS[format] || format;
+
+  // Show progress indicator or confirmation
+  const confirmMessage = fileNames.length > 10
+    ? `Download ${fileNames.length} files as ${formatLabel}? This may take a moment.`
+    : `Download ${fileNames.length} files as ${formatLabel}?`;
+
+  if (!confirm(confirmMessage)) return;
+
+  // In a real implementation, this would:
+  // 1. For each file, apply its assigned profiles
+  // 2. Generate outputs for each file in requested format
+  // 3. Package into a ZIP archive
+  // 4. Trigger download
+
+  const downloadList = fileNames.map(fileName => {
+    const assignments = getFileProfileAssignment(fileName);
+    const kvp = assignments.kvpProfile || getDefaultKvpProfile() || 'Extract All';
+    const anon = assignments.anonProfile || getDefaultAnonProfile() || 'Anonymize All';
+    return `  • ${fileName} (KVP: ${kvp}, ANON: ${anon})`;
+  }).join('\n');
+
+  alert(`[Mock Bulk Download]\n\nFormat: ${formatLabel}\nFiles:\n${downloadList}\n\nIn production, this would create a ZIP archive.`);
 }
 
 // ==========================================
@@ -1266,6 +1612,1500 @@ function processFileUpload(files, formats) {
 }
 
 // ==========================================
+// KVP CONFIGURATION MODAL
+// ==========================================
+
+let kvpModalState = {
+  files: [],
+  selectedFileIndices: new Set(), // Track which files are selected (by index)
+  selectedSectors: [],
+  selectedFields: new Set(),
+  customFields: [],
+  // Tab state
+  activeTab: 'kvp',
+  // Enabled processing steps
+  enabledSteps: {
+    kvp: true,
+    anon: false,
+    text: false
+  },
+  // ANON state
+  anon: {
+    selectedCategories: [],
+    selectedEntities: new Set(),
+    customEntities: []
+  }
+};
+
+// Master ANON entities data
+let masterAnonData = null;
+
+function showKvpConfigModal(files) {
+  // Prevent opening if already open
+  if (document.getElementById('kvpConfigModal').classList.contains('show')) {
+    return;
+  }
+
+  kvpModalState.files = Array.from(files);
+  kvpModalState.selectedFileIndices = new Set(files.length > 0 ? [...Array(files.length).keys()] : []); // Select all by default
+  kvpModalState.selectedSectors = [];
+  kvpModalState.selectedFields = new Set();
+  kvpModalState.customFields = [];
+  kvpModalState.activeTab = 'kvp';
+
+  // Reset ANON state
+  kvpModalState.anon = {
+    selectedCategories: [],
+    selectedEntities: new Set(),
+    customEntities: []
+  };
+
+  // Populate file list
+  populateKvpFileList();
+
+  // Initialize tabs
+  initModalTabs();
+
+  // Initialize KVP dropdowns and field list
+  initKvpSectorDropdown();
+  initKvpPresetDropdown();
+  initKvpFieldList();
+  initKvpCustomFields();
+
+  // Initialize ANON components
+  loadAnonEntities().then(() => {
+    initAnonCategoryDropdown();
+    initAnonPresetDropdown();
+    initAnonEntityList();
+    initAnonCustomEntities();
+  });
+
+  // Update file count in button
+  updateKvpFileCount();
+
+  // Show modal
+  document.getElementById('kvpConfigModal').classList.add('show');
+}
+
+function hideKvpConfigModal() {
+  document.getElementById('kvpConfigModal').classList.remove('show');
+  // Clear file input
+  setTimeout(() => {
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.value = '';
+  }, 100);
+}
+
+function populateKvpFileList() {
+  const container = document.querySelector('.kvp-file-list-items');
+  if (!container) return;
+
+  const fileItems = kvpModalState.files.map((file, index) => {
+    const isChecked = kvpModalState.selectedFileIndices.has(index);
+    return `
+    <label class="kvp-file-item">
+      <input type="checkbox" data-file-index="${index}" ${isChecked ? 'checked' : ''} />
+      <span class="kvp-file-name">${file.name}</span>
+    </label>
+  `;
+  }).join('');
+
+  container.innerHTML = fileItems;
+
+  // Bind checkbox change events
+  container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const index = parseInt(e.target.dataset.fileIndex);
+      if (e.target.checked) {
+        kvpModalState.selectedFileIndices.add(index);
+      } else {
+        kvpModalState.selectedFileIndices.delete(index);
+      }
+      updateKvpFileCount();
+      updateKvpSelectAllState();
+    });
+  });
+
+  // Bind select all checkbox
+  const selectAllCheckbox = document.getElementById('kvpSelectAllFiles');
+  if (selectAllCheckbox) {
+    // Remove old listener by cloning
+    const newCheckbox = selectAllCheckbox.cloneNode(true);
+    selectAllCheckbox.parentNode.replaceChild(newCheckbox, selectAllCheckbox);
+
+    newCheckbox.addEventListener('change', (e) => {
+      const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = e.target.checked;
+        const index = parseInt(cb.dataset.fileIndex);
+        if (e.target.checked) {
+          kvpModalState.selectedFileIndices.add(index);
+        } else {
+          kvpModalState.selectedFileIndices.delete(index);
+        }
+      });
+      updateKvpFileCount();
+    });
+    updateKvpSelectAllState();
+  }
+}
+
+function updateKvpSelectAllState() {
+  const selectAllCheckbox = document.getElementById('kvpSelectAllFiles');
+  if (!selectAllCheckbox) return;
+
+  const totalFiles = kvpModalState.files.length;
+  const selectedFiles = kvpModalState.selectedFileIndices.size;
+
+  selectAllCheckbox.checked = totalFiles > 0 && selectedFiles === totalFiles;
+  selectAllCheckbox.indeterminate = selectedFiles > 0 && selectedFiles < totalFiles;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function updateKvpFileCount() {
+  const selectedCount = kvpModalState.selectedFileIndices.size;
+
+  // Update sidebar header count
+  const countSpan = document.querySelector('.kvp-file-count');
+  if (countSpan) {
+    countSpan.textContent = selectedCount;
+  }
+
+  // Update button count
+  const btnCountSpan = document.querySelector('.kvp-file-count-btn');
+  if (btnCountSpan) {
+    btnCountSpan.textContent = selectedCount;
+  }
+}
+
+function initKvpSectorDropdown() {
+  const dropdown = document.querySelector('.kvp-sector-dropdown');
+  const menu = document.querySelector('.kvp-sector-menu');
+  const list = document.querySelector('.kvp-sector-list');
+  const searchInput = document.querySelector('.kvp-sector-search');
+  const selectedContainer = document.querySelector('.kvp-selected-sectors');
+
+  if (!dropdown || !menu || !list) return;
+
+  // Populate sector list
+  const sectors = getSectorList();
+
+  function renderSectorList(filter = '') {
+    const filtered = filter
+      ? sectors.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()))
+      : sectors;
+
+    list.innerHTML = filtered.map(sector => `
+      <div class="kvp-sector-item" data-sector-id="${sector.id}">
+        <span class="kvp-sector-name">${sector.name}</span>
+        <span class="kvp-sector-count">${sector.count} fields</span>
+      </div>
+    `).join('');
+
+    // Add click handlers
+    list.querySelectorAll('.kvp-sector-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const sectorId = item.dataset.sectorId;
+        const sectorName = item.querySelector('.kvp-sector-name').textContent;
+        addSelectedSector(sectorId, sectorName);
+        menu.style.display = 'none';
+        searchInput.value = '';
+        renderSectorList();
+      });
+    });
+  }
+
+  // Toggle dropdown
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = menu.style.display !== 'none';
+    menu.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+      searchInput.focus();
+      renderSectorList();
+    }
+  });
+
+  // Search filter
+  searchInput.addEventListener('input', (e) => {
+    renderSectorList(e.target.value);
+  });
+
+  // Click outside to close
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.kvp-sector-dropdown-wrapper')) {
+      menu.style.display = 'none';
+    }
+  });
+
+  // Clear and render
+  selectedContainer.innerHTML = '';
+  renderSectorList();
+
+  function addSelectedSector(sectorId, sectorName) {
+    // Prevent duplicates
+    if (kvpModalState.selectedSectors.includes(sectorId)) return;
+
+    kvpModalState.selectedSectors.push(sectorId);
+
+    // Add chip
+    const chip = document.createElement('div');
+    chip.className = 'kvp-sector-chip';
+    chip.dataset.sectorId = sectorId;
+    chip.innerHTML = `
+      <span>${sectorName}</span>
+      <button class="kvp-sector-remove" type="button">&times;</button>
+    `;
+
+    chip.querySelector('.kvp-sector-remove').addEventListener('click', () => {
+      kvpModalState.selectedSectors = kvpModalState.selectedSectors.filter(id => id !== sectorId);
+      chip.remove();
+      updateKvpFieldsFromSectors();
+      updateDropdownText();
+    });
+
+    selectedContainer.appendChild(chip);
+    updateKvpFieldsFromSectors();
+    updateDropdownText();
+  }
+
+  function updateDropdownText() {
+    const text = dropdown.querySelector('.kvp-sector-text');
+    if (kvpModalState.selectedSectors.length === 0) {
+      text.textContent = 'Select sector...';
+    } else {
+      text.textContent = `${kvpModalState.selectedSectors.length} sector(s) selected`;
+    }
+  }
+}
+
+function updateKvpFieldsFromSectors() {
+  const documentFieldsContainer = document.querySelector('.kvp-document-fields .kvp-section-content');
+  const sectorContainer = document.querySelector('.kvp-sector-fields-container');
+  const selectAllLabel = document.querySelector('.kvp-select-all');
+  const fieldDivider = document.querySelector('.kvp-field-divider');
+
+  if (!sectorContainer) return;
+
+  // If no sectors selected, show empty state
+  if (kvpModalState.selectedSectors.length === 0) {
+    if (documentFieldsContainer) {
+      documentFieldsContainer.innerHTML = '<div class="kvp-fields-placeholder">Select a sector or preset to see available fields</div>';
+    }
+    sectorContainer.innerHTML = '';
+    if (selectAllLabel) selectAllLabel.style.display = 'none';
+    if (fieldDivider) fieldDivider.style.display = 'none';
+    return;
+  }
+
+  // Show Select All and divider
+  if (selectAllLabel) selectAllLabel.style.display = '';
+  if (fieldDivider) fieldDivider.style.display = '';
+
+  // Reset select all to checked
+  const selectAll = document.querySelector('.kvp-select-all-checkbox');
+  if (selectAll) selectAll.checked = true;
+
+  // Add document fields if not already there
+  if (documentFieldsContainer && documentFieldsContainer.querySelector('.kvp-fields-placeholder')) {
+    documentFieldsContainer.innerHTML = '';
+    const documentFields = ['document_type', 'document_date', 'document_title', 'page_count', 'language'];
+    documentFields.forEach(field => {
+      const checkbox = createKvpFieldCheckbox(field, 'document');
+      documentFieldsContainer.appendChild(checkbox);
+    });
+  }
+
+  // Clear and rebuild sector fields
+  sectorContainer.innerHTML = '';
+
+  kvpModalState.selectedSectors.forEach(sectorId => {
+    const sectorData = masterKvpData?.sectors?.[sectorId];
+    if (!sectorData) return;
+
+    const section = document.createElement('div');
+    section.className = 'kvp-field-section';
+    section.innerHTML = `
+      <div class="kvp-section-header">
+        <span class="kvp-section-title">${sectorData.name}</span>
+        <span class="kvp-section-count">${sectorData.kvps?.length || 0}</span>
+      </div>
+      <div class="kvp-section-content"></div>
+    `;
+
+    const content = section.querySelector('.kvp-section-content');
+    (sectorData.kvps || []).forEach(kvp => {
+      const checkbox = createKvpFieldCheckbox(kvp.key, `sector-${sectorId}`);
+      content.appendChild(checkbox);
+    });
+
+    sectorContainer.appendChild(section);
+  });
+
+  updateSelectAllState();
+}
+
+function createKvpFieldCheckbox(fieldName, category = 'document') {
+  const label = document.createElement('label');
+  label.className = 'kvp-field-checkbox';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = true; // Default to checked
+  checkbox.dataset.field = fieldName;
+  checkbox.dataset.category = category;
+
+  // Track state
+  if (checkbox.checked) {
+    kvpModalState.selectedFields.add(fieldName);
+  }
+
+  checkbox.addEventListener('change', () => {
+    if (checkbox.checked) {
+      kvpModalState.selectedFields.add(fieldName);
+    } else {
+      kvpModalState.selectedFields.delete(fieldName);
+    }
+    updateSelectAllState();
+  });
+
+  const span = document.createElement('span');
+  span.textContent = fieldName;
+
+  label.appendChild(checkbox);
+  label.appendChild(span);
+
+  return label;
+}
+
+function updateSelectAllState() {
+  const selectAll = document.querySelector('.kvp-select-all-checkbox');
+  if (!selectAll) return;
+
+  const allCheckboxes = document.querySelectorAll('.kvp-field-checkbox input[type="checkbox"]');
+  const checkedCount = document.querySelectorAll('.kvp-field-checkbox input[type="checkbox"]:checked').length;
+
+  selectAll.checked = checkedCount === allCheckboxes.length && allCheckboxes.length > 0;
+  selectAll.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+}
+
+function initKvpFieldList() {
+  // Start with empty state - fields appear after selecting sector/preset
+  const documentFieldsContainer = document.querySelector('.kvp-document-fields .kvp-section-content');
+  if (!documentFieldsContainer) return;
+
+  // Clear everything and show placeholder
+  documentFieldsContainer.innerHTML = '<div class="kvp-fields-placeholder">Select a sector or preset to see available fields</div>';
+  kvpModalState.selectedFields.clear();
+
+  // Clear sector fields
+  const sectorContainer = document.querySelector('.kvp-sector-fields-container');
+  if (sectorContainer) sectorContainer.innerHTML = '';
+
+  // Hide Select All initially (no fields to select)
+  const selectAllLabel = document.querySelector('.kvp-select-all');
+  const fieldDivider = document.querySelector('.kvp-field-divider');
+  if (selectAllLabel) selectAllLabel.style.display = 'none';
+  if (fieldDivider) fieldDivider.style.display = 'none';
+
+  // Set up Select All checkbox event
+  const selectAll = document.querySelector('.kvp-select-all-checkbox');
+  if (selectAll) {
+    selectAll.addEventListener('change', () => {
+      const allCheckboxes = document.querySelectorAll('.kvp-field-checkbox input[type="checkbox"]');
+      allCheckboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+        if (selectAll.checked) {
+          kvpModalState.selectedFields.add(cb.dataset.field);
+        } else {
+          kvpModalState.selectedFields.delete(cb.dataset.field);
+        }
+      });
+    });
+  }
+}
+
+function initKvpPresetDropdown() {
+  const dropdown = document.querySelector('.kvp-preset-dropdown');
+  const menu = document.querySelector('.kvp-preset-menu');
+
+  if (!dropdown || !menu) return;
+
+  // Load presets into menu
+  loadKvpPresetsIntoMenu(menu);
+
+  // Toggle dropdown
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = menu.style.display !== 'none';
+    menu.style.display = isOpen ? 'none' : 'block';
+  });
+
+  // Click outside to close
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.kvp-preset-dropdown-wrapper')) {
+      menu.style.display = 'none';
+    }
+  });
+}
+
+function loadKvpPresetsIntoMenu(menu) {
+  const presets = getPresets();
+
+  menu.innerHTML = '';
+
+  // Add default "All Fields" option
+  const allItem = document.createElement('div');
+  allItem.className = 'kvp-preset-item';
+  allItem.dataset.value = '__all__';
+  allItem.textContent = 'All Fields';
+  allItem.addEventListener('click', () => {
+    applyKvpPreset(null); // null = all fields
+    menu.style.display = 'none';
+    document.querySelector('.kvp-preset-text').textContent = 'All Fields';
+  });
+  menu.appendChild(allItem);
+
+  // Add separator if there are presets
+  if (presets.length > 0) {
+    const separator = document.createElement('div');
+    separator.className = 'kvp-preset-separator';
+    menu.appendChild(separator);
+  }
+
+  // Add saved presets with context menu
+  presets.forEach(preset => {
+    // Wrapper div
+    const wrapper = document.createElement('div');
+    wrapper.className = 'kvp-preset-item-wrapper';
+
+    // Clickable preset name
+    const item = document.createElement('div');
+    item.className = 'kvp-preset-item';
+    item.dataset.value = preset.name;
+    item.textContent = preset.name;
+    item.addEventListener('click', () => {
+      applyKvpPreset(preset);
+      menu.style.display = 'none';
+      document.querySelector('.kvp-preset-text').textContent = preset.name;
+    });
+
+    // Three-dots button (horizontal)
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'kvp-preset-menu-btn';
+    menuBtn.type = 'button';
+    menuBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="5" cy="12" r="2"></circle>
+        <circle cx="12" cy="12" r="2"></circle>
+        <circle cx="19" cy="12" r="2"></circle>
+      </svg>
+    `;
+
+    // Context menu
+    const contextMenu = document.createElement('div');
+    contextMenu.className = 'kvp-preset-context-menu';
+    contextMenu.dataset.preset = preset.name;
+    contextMenu.innerHTML = `
+      <button class="kvp-context-menu-item" data-action="rename" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        <span>Rename</span>
+      </button>
+      <button class="kvp-context-menu-item kvp-context-menu-item-danger" data-action="delete" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Delete</span>
+      </button>
+    `;
+
+    // Three-dots button click handler
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close all other preset context menus
+      document.querySelectorAll('.kvp-preset-context-menu.show').forEach(m => {
+        if (m !== contextMenu) m.classList.remove('show');
+      });
+
+      // Position context menu using fixed positioning
+      if (!contextMenu.classList.contains('show')) {
+        const btnRect = menuBtn.getBoundingClientRect();
+        contextMenu.style.position = 'fixed';
+        contextMenu.style.top = `${btnRect.bottom + 4}px`;
+        contextMenu.style.left = `${btnRect.right - 120}px`;
+      }
+      contextMenu.classList.toggle('show');
+    });
+
+    // Context menu action handlers
+    contextMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const actionBtn = e.target.closest('.kvp-context-menu-item');
+      if (!actionBtn) return;
+
+      const action = actionBtn.dataset.action;
+      const presetName = contextMenu.dataset.preset;
+      contextMenu.classList.remove('show');
+
+      if (action === 'rename') {
+        const newName = prompt('Enter new preset name:', presetName);
+        if (newName && newName.trim() && newName !== presetName) {
+          // Check for duplicate names
+          const existingPresets = getPresets();
+          if (existingPresets.some(p => p.name === newName.trim())) {
+            alert('A preset with this name already exists.');
+            return;
+          }
+          renamePreset(presetName, newName.trim());
+          loadKvpPresetsIntoMenu(menu);
+          // Update dropdown text if this preset was selected
+          const presetText = document.querySelector('.kvp-preset-text');
+          if (presetText && presetText.textContent === presetName) {
+            presetText.textContent = newName.trim();
+          }
+        }
+      } else if (action === 'delete') {
+        if (confirm(`Delete preset "${presetName}"?`)) {
+          deletePreset(presetName);
+          loadKvpPresetsIntoMenu(menu);
+          // Reset dropdown text if this preset was selected
+          const presetText = document.querySelector('.kvp-preset-text');
+          if (presetText && presetText.textContent === presetName) {
+            presetText.textContent = 'Select preset...';
+          }
+        }
+      }
+    });
+
+    wrapper.appendChild(item);
+    wrapper.appendChild(menuBtn);
+    wrapper.appendChild(contextMenu);
+    menu.appendChild(wrapper);
+  });
+
+  // Close context menus when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.kvp-preset-context-menu.show').forEach(m => {
+      m.classList.remove('show');
+    });
+  });
+}
+
+function applyKvpPreset(preset) {
+  // Clear current selections
+  kvpModalState.selectedSectors = [];
+  kvpModalState.selectedFields.clear();
+
+  // Clear sector chips
+  document.querySelector('.kvp-selected-sectors').innerHTML = '';
+
+  if (!preset) {
+    // "All Fields" - select all checkboxes
+    const allCheckboxes = document.querySelectorAll('.kvp-field-checkbox input[type="checkbox"]');
+    allCheckboxes.forEach(cb => {
+      cb.checked = true;
+      kvpModalState.selectedFields.add(cb.dataset.field);
+    });
+    document.querySelector('.kvp-select-all-checkbox').checked = true;
+    return;
+  }
+
+  // Apply preset sectors
+  if (preset.sectorIds && preset.sectorIds.length > 0) {
+    preset.sectorIds.forEach(sectorId => {
+      const sector = getSectorList().find(s => s.id === sectorId);
+      if (sector) {
+        // Add to state and create chip
+        kvpModalState.selectedSectors.push(sectorId);
+        const chip = document.createElement('div');
+        chip.className = 'kvp-sector-chip';
+        chip.dataset.sectorId = sectorId;
+        chip.innerHTML = `
+          <span>${sector.name}</span>
+          <button class="kvp-sector-remove" type="button">&times;</button>
+        `;
+        chip.querySelector('.kvp-sector-remove').addEventListener('click', () => {
+          kvpModalState.selectedSectors = kvpModalState.selectedSectors.filter(id => id !== sectorId);
+          chip.remove();
+          updateKvpFieldsFromSectors();
+        });
+        document.querySelector('.kvp-selected-sectors').appendChild(chip);
+      }
+    });
+    updateKvpFieldsFromSectors();
+  }
+
+  // Apply preset fields
+  const allCheckboxes = document.querySelectorAll('.kvp-field-checkbox input[type="checkbox"]');
+  allCheckboxes.forEach(cb => {
+    const isSelected = preset.fields.includes(cb.dataset.field);
+    cb.checked = isSelected;
+    if (isSelected) {
+      kvpModalState.selectedFields.add(cb.dataset.field);
+    }
+  });
+
+  // Apply custom fields
+  if (preset.customFields && preset.customFields.length > 0) {
+    kvpModalState.customFields = [...preset.customFields];
+    renderCustomFields();
+  }
+
+  updateSelectAllState();
+}
+
+function initKvpCustomFields() {
+  const input = document.querySelector('.kvp-custom-field-input');
+  const addBtn = document.querySelector('.kvp-custom-field-add');
+
+  if (!input || !addBtn) return;
+
+  function addCustomField() {
+    const value = input.value.trim();
+    if (!value) return;
+
+    // Prevent duplicates
+    if (kvpModalState.customFields.includes(value) ||
+        kvpModalState.selectedFields.has(value)) {
+      input.value = '';
+      return;
+    }
+
+    kvpModalState.customFields.push(value);
+    kvpModalState.selectedFields.add(value);
+    input.value = '';
+    renderCustomFields();
+  }
+
+  addBtn.addEventListener('click', addCustomField);
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addCustomField();
+    }
+  });
+}
+
+function renderCustomFields() {
+  // Find or create custom fields section
+  let customSection = document.querySelector('.kvp-custom-fields-section');
+  if (!customSection && kvpModalState.customFields.length > 0) {
+    const container = document.querySelector('.kvp-sector-fields-container');
+    customSection = document.createElement('div');
+    customSection.className = 'kvp-field-section kvp-custom-fields-section';
+    customSection.innerHTML = `
+      <div class="kvp-section-header">
+        <span class="kvp-section-title">Custom Fields</span>
+        <span class="kvp-section-count">${kvpModalState.customFields.length}</span>
+      </div>
+      <div class="kvp-section-content"></div>
+    `;
+    container.appendChild(customSection);
+  }
+
+  if (!customSection) return;
+
+  const content = customSection.querySelector('.kvp-section-content');
+  content.innerHTML = '';
+
+  kvpModalState.customFields.forEach(field => {
+    const label = document.createElement('label');
+    label.className = 'kvp-field-checkbox kvp-custom-field';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = true;
+    checkbox.dataset.field = field;
+    checkbox.dataset.category = 'custom';
+
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        kvpModalState.selectedFields.add(field);
+      } else {
+        kvpModalState.selectedFields.delete(field);
+      }
+      updateSelectAllState();
+    });
+
+    const span = document.createElement('span');
+    span.textContent = field;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'kvp-custom-remove';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      kvpModalState.customFields = kvpModalState.customFields.filter(f => f !== field);
+      kvpModalState.selectedFields.delete(field);
+      renderCustomFields();
+      updateSelectAllState();
+    });
+
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    label.appendChild(removeBtn);
+    content.appendChild(label);
+  });
+
+  // Update count
+  const countSpan = customSection.querySelector('.kvp-section-count');
+  if (countSpan) countSpan.textContent = kvpModalState.customFields.length;
+
+  // Remove section if empty
+  if (kvpModalState.customFields.length === 0 && customSection) {
+    customSection.remove();
+  }
+}
+
+function handleKvpProcess() {
+  // Get only selected files
+  const selectedFiles = kvpModalState.files.filter((_, index) =>
+    kvpModalState.selectedFileIndices.has(index)
+  );
+
+  if (selectedFiles.length === 0) {
+    alert('Please select at least one file to process.');
+    return;
+  }
+
+  const config = {
+    files: selectedFiles,
+    // KVP extraction config
+    kvp: {
+      enabled: kvpModalState.enabledSteps.kvp,
+      sectors: kvpModalState.selectedSectors,
+      fields: Array.from(kvpModalState.selectedFields),
+      customFields: kvpModalState.customFields
+    },
+    // Anonymization config
+    anon: {
+      enabled: kvpModalState.enabledSteps.anon,
+      categories: kvpModalState.anon.selectedCategories,
+      entities: Array.from(kvpModalState.anon.selectedEntities),
+      customEntities: kvpModalState.anon.customEntities
+    },
+    // Text extraction
+    extractText: {
+      enabled: kvpModalState.enabledSteps.text
+    }
+  };
+
+  console.log('Processing with config:', config);
+
+  hideKvpConfigModal();
+
+  // Process each file with the extraction config
+  processFilesWithConfig(config);
+}
+
+function processFilesWithConfig(config) {
+  // Upload files with extraction configuration
+  config.files.forEach(file => {
+    // Use existing handleFileUpload but extend it to include config
+    handleFileUploadWithConfig(file, {
+      kvp: config.kvp,
+      anon: config.anon,
+      extractText: config.extractText.enabled
+    });
+  });
+}
+
+async function handleFileUploadWithConfig(file, extractionConfig) {
+  const circularDropzone = document.getElementById('circularDropzone');
+  const btnUploadCircular = document.getElementById('btnUploadCircular');
+
+  // Show uploading state if elements exist
+  if (circularDropzone) circularDropzone.classList.add('uploading');
+  if (btnUploadCircular) btnUploadCircular.style.display = 'none';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('userId', USER_ID);
+    formData.append('extractionConfig', JSON.stringify(extractionConfig));
+
+    const response = await fetch(`${API_URL}/api/tasks`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+      const taskId = data.data.taskId;
+      console.log(`✓ File uploaded: ${file.name} → Task ${taskId}`);
+
+      // If a folder is selected, move task to that folder
+      if (currentFolderId && currentFolderId !== 'all') {
+        await fetch(`${API_URL}/api/folders/${currentFolderId}/tasks/${taskId}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Refresh task list
+      loadTasks();
+    }
+  } catch (error) {
+    console.error('Upload failed:', error);
+    alert(`Failed to upload ${file.name}: ${error.message}`);
+  } finally {
+    // Reset uploading state
+    if (circularDropzone) circularDropzone.classList.remove('uploading');
+    selectedFileForUpload = null;
+
+    // Reset empty state UI
+    const uploadText = document.querySelector('.upload-text');
+    const uploadSubtext = document.querySelector('.upload-subtext');
+    const uploadHint = document.querySelector('.upload-hint');
+    const selectedFileName = document.getElementById('selectedFileName');
+
+    if (uploadText) uploadText.style.display = '';
+    if (uploadSubtext) uploadSubtext.style.display = '';
+    if (uploadHint) uploadHint.style.display = '';
+    if (selectedFileName) selectedFileName.style.display = 'none';
+  }
+}
+
+function showSaveKvpPresetDialog() {
+  const input = document.getElementById('kvpPresetNameInput');
+  const name = input?.value;
+
+  if (!name || !name.trim()) {
+    input?.focus();
+    // Brief highlight to show the input needs a value
+    input?.classList.add('error');
+    setTimeout(() => input?.classList.remove('error'), 1500);
+    return;
+  }
+
+  // Check for duplicate names
+  const existingPresets = getPresets();
+  if (existingPresets.some(p => p.name === name.trim())) {
+    if (!confirm(`A preset named "${name.trim()}" already exists. Overwrite?`)) {
+      return;
+    }
+  }
+
+  savePreset(
+    name.trim(),
+    Array.from(kvpModalState.selectedFields),
+    kvpModalState.selectedSectors,
+    kvpModalState.customFields
+  );
+
+  // Clear the input
+  if (input) input.value = '';
+
+  // Refresh preset menu
+  const menu = document.querySelector('.kvp-preset-menu');
+  if (menu) loadKvpPresetsIntoMenu(menu);
+
+  // Update dropdown text
+  document.querySelector('.kvp-preset-text').textContent = name.trim();
+}
+
+function showSaveAnonPresetDialog() {
+  const input = document.getElementById('anonPresetNameInput');
+  const name = input?.value;
+
+  if (!name || !name.trim()) {
+    input?.focus();
+    // Brief highlight to show the input needs a value
+    input?.classList.add('error');
+    setTimeout(() => input?.classList.remove('error'), 1500);
+    return;
+  }
+
+  // Check for duplicate names
+  const existingPresets = getAnonPresets();
+  if (existingPresets.some(p => p.name === name.trim())) {
+    if (!confirm(`A preset named "${name.trim()}" already exists. Overwrite?`)) {
+      return;
+    }
+  }
+
+  saveAnonPreset(
+    name.trim(),
+    kvpModalState.anon.selectedCategories,
+    Array.from(kvpModalState.anon.selectedEntities),
+    kvpModalState.anon.customEntities
+  );
+
+  // Clear the input
+  if (input) input.value = '';
+
+  // Refresh preset menu
+  loadAnonPresetsIntoMenu();
+
+  // Update dropdown text
+  document.querySelector('.anon-preset-text').textContent = name.trim();
+}
+
+function initKvpConfigModal() {
+  const modal = document.getElementById('kvpConfigModal');
+  if (!modal) return;
+
+  // Close button
+  document.getElementById('closeKvpConfigModal')?.addEventListener('click', hideKvpConfigModal);
+
+  // Cancel button
+  document.getElementById('kvpCancel')?.addEventListener('click', hideKvpConfigModal);
+
+  // Process button
+  document.getElementById('kvpProcess')?.addEventListener('click', handleKvpProcess);
+
+  // Save Preset button (KVP)
+  document.getElementById('kvpSavePreset')?.addEventListener('click', showSaveKvpPresetDialog);
+
+  // Save Preset button (ANON)
+  document.getElementById('anonSavePreset')?.addEventListener('click', showSaveAnonPresetDialog);
+
+  // ESC key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) {
+      hideKvpConfigModal();
+    }
+  });
+}
+
+// ==========================================
+// MODAL TABS
+// ==========================================
+
+function initModalTabs() {
+  const tabs = document.querySelectorAll('.modal-tab');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      switchToTab(tab.dataset.tab);
+    });
+  });
+
+  // Initialize panel enable toggles
+  initPanelEnableToggles();
+
+  // Reset to KVP tab
+  switchToTab('kvp');
+}
+
+function initPanelEnableToggles() {
+  const toggleMap = {
+    kvp: document.getElementById('kvpEnabled'),
+    anon: document.getElementById('anonEnabled'),
+    text: document.getElementById('textEnabled')
+  };
+
+  Object.entries(toggleMap).forEach(([panelName, toggle]) => {
+    if (!toggle) return;
+
+    const panel = document.querySelector(`.tab-panel[data-panel="${panelName}"]`);
+    const content = panel?.querySelector('.panel-content');
+
+    // Initialize state
+    toggle.checked = kvpModalState.enabledSteps[panelName];
+    if (content) {
+      content.classList.toggle('disabled', !toggle.checked);
+    }
+
+    // Handle changes
+    toggle.addEventListener('change', () => {
+      kvpModalState.enabledSteps[panelName] = toggle.checked;
+      if (content) {
+        content.classList.toggle('disabled', !toggle.checked);
+      }
+    });
+  });
+}
+
+function switchToTab(tabName) {
+  const tabs = document.querySelectorAll('.modal-tab');
+  const panels = document.querySelectorAll('.tab-panel');
+
+  // Update active tab
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+
+  // Update active panel
+  panels.forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
+
+  // Update state
+  kvpModalState.activeTab = tabName;
+}
+
+// ==========================================
+// ANON TAB FUNCTIONALITY
+// ==========================================
+
+async function loadAnonEntities() {
+  if (masterAnonData) return masterAnonData;
+
+  try {
+    const response = await fetch('master_anon_entities.json');
+    masterAnonData = await response.json();
+    return masterAnonData;
+  } catch (error) {
+    console.error('Failed to load ANON entities:', error);
+    masterAnonData = { categories: {}, presets: {} };
+    return masterAnonData;
+  }
+}
+
+function initAnonCategoryDropdown() {
+  const dropdown = document.querySelector('.anon-category-dropdown');
+  const menu = document.querySelector('.anon-category-menu');
+  const list = document.querySelector('.anon-category-list');
+  const chipsContainer = document.querySelector('.anon-selected-categories');
+
+  if (!dropdown || !menu || !list || !masterAnonData) return;
+
+  // Populate category list
+  list.innerHTML = '';
+  Object.entries(masterAnonData.categories).forEach(([categoryId, category]) => {
+    const item = document.createElement('div');
+    item.className = 'anon-category-item';
+    item.dataset.categoryId = categoryId;
+    item.textContent = category.name;
+    item.addEventListener('click', () => selectAnonCategory(categoryId, category.name));
+    list.appendChild(item);
+  });
+
+  // Toggle dropdown
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = menu.style.display !== 'none';
+    menu.style.display = isOpen ? 'none' : 'block';
+    dropdown.classList.toggle('open', !isOpen);
+  });
+
+  // Close on outside click
+  document.addEventListener('click', () => {
+    menu.style.display = 'none';
+    dropdown.classList.remove('open');
+  });
+
+  menu.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function selectAnonCategory(categoryId, categoryName) {
+  if (kvpModalState.anon.selectedCategories.includes(categoryId)) return;
+
+  kvpModalState.anon.selectedCategories.push(categoryId);
+
+  // Add chip
+  const chipsContainer = document.querySelector('.anon-selected-categories');
+  const chip = document.createElement('div');
+  chip.className = 'anon-category-chip';
+  chip.dataset.categoryId = categoryId;
+  chip.innerHTML = `
+    <span>${categoryName}</span>
+    <button type="button">&times;</button>
+  `;
+
+  chip.querySelector('button').addEventListener('click', () => {
+    kvpModalState.anon.selectedCategories = kvpModalState.anon.selectedCategories.filter(id => id !== categoryId);
+    chip.remove();
+    updateAnonEntitiesFromCategories();
+    updateAnonCategoryDropdownText();
+  });
+
+  chipsContainer.appendChild(chip);
+  updateAnonEntitiesFromCategories();
+  updateAnonCategoryDropdownText();
+
+  // Close menu
+  document.querySelector('.anon-category-menu').style.display = 'none';
+  document.querySelector('.anon-category-dropdown').classList.remove('open');
+}
+
+function updateAnonCategoryDropdownText() {
+  const text = document.querySelector('.anon-category-text');
+  if (!text) return;
+
+  if (kvpModalState.anon.selectedCategories.length === 0) {
+    text.textContent = 'Select category...';
+  } else {
+    text.textContent = `${kvpModalState.anon.selectedCategories.length} category(s) selected`;
+  }
+}
+
+function updateAnonEntitiesFromCategories() {
+  const container = document.querySelector('.anon-category-entities-container');
+  const selectAllLabel = document.querySelector('.anon-select-all');
+  const divider = document.querySelector('.anon-entity-divider');
+
+  if (!container || !masterAnonData) return;
+
+  // If no categories selected, show placeholder
+  if (kvpModalState.anon.selectedCategories.length === 0) {
+    container.innerHTML = '<div class="anon-entities-placeholder">Select a category to see available entities</div>';
+    if (selectAllLabel) selectAllLabel.style.display = 'none';
+    if (divider) divider.style.display = 'none';
+    return;
+  }
+
+  if (selectAllLabel) selectAllLabel.style.display = 'flex';
+  if (divider) divider.style.display = 'block';
+
+  container.innerHTML = '';
+
+  // Build entity sections for each selected category
+  kvpModalState.anon.selectedCategories.forEach(categoryId => {
+    const categoryData = masterAnonData.categories[categoryId];
+    if (!categoryData) return;
+
+    const section = document.createElement('div');
+    section.className = 'anon-entity-section';
+    section.innerHTML = `
+      <div class="anon-entity-section-header">
+        <span>${categoryData.name}</span>
+        <span class="anon-entity-section-count">${categoryData.entities.length}</span>
+      </div>
+      <div class="anon-entity-section-content"></div>
+    `;
+
+    const content = section.querySelector('.anon-entity-section-content');
+
+    categoryData.entities.forEach(entity => {
+      const checkbox = createAnonEntityCheckbox(entity.key, categoryId);
+      content.appendChild(checkbox);
+    });
+
+    container.appendChild(section);
+  });
+
+  updateAnonSelectAllState();
+}
+
+function createAnonEntityCheckbox(entityKey, categoryId) {
+  const label = document.createElement('label');
+  label.className = 'anon-entity-checkbox';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.dataset.entity = entityKey;
+  checkbox.dataset.category = categoryId;
+
+  // Check if already selected
+  if (kvpModalState.anon.selectedEntities.has(entityKey)) {
+    checkbox.checked = true;
+  } else {
+    // Auto-select by default
+    checkbox.checked = true;
+    kvpModalState.anon.selectedEntities.add(entityKey);
+  }
+
+  checkbox.addEventListener('change', () => {
+    if (checkbox.checked) {
+      kvpModalState.anon.selectedEntities.add(entityKey);
+    } else {
+      kvpModalState.anon.selectedEntities.delete(entityKey);
+    }
+    updateAnonSelectAllState();
+  });
+
+  const span = document.createElement('span');
+  span.textContent = entityKey.replace(/_/g, ' ');
+
+  label.appendChild(checkbox);
+  label.appendChild(span);
+
+  return label;
+}
+
+function updateAnonSelectAllState() {
+  const selectAllCheckbox = document.querySelector('.anon-select-all-checkbox');
+  if (!selectAllCheckbox) return;
+
+  const allCheckboxes = document.querySelectorAll('.anon-entity-checkbox input');
+  const checkedCount = document.querySelectorAll('.anon-entity-checkbox input:checked').length;
+
+  selectAllCheckbox.checked = allCheckboxes.length > 0 && checkedCount === allCheckboxes.length;
+  selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+}
+
+function initAnonEntityList() {
+  const container = document.querySelector('.anon-category-entities-container');
+  const selectAllCheckbox = document.querySelector('.anon-select-all-checkbox');
+
+  if (container) {
+    container.innerHTML = '<div class="anon-entities-placeholder">Select a category to see available entities</div>';
+  }
+
+  // Hide select all initially
+  const selectAllLabel = document.querySelector('.anon-select-all');
+  const divider = document.querySelector('.anon-entity-divider');
+  if (selectAllLabel) selectAllLabel.style.display = 'none';
+  if (divider) divider.style.display = 'none';
+
+  // Select all toggle
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', () => {
+      const allCheckboxes = document.querySelectorAll('.anon-entity-checkbox input');
+      allCheckboxes.forEach(cb => {
+        cb.checked = selectAllCheckbox.checked;
+        if (selectAllCheckbox.checked) {
+          kvpModalState.anon.selectedEntities.add(cb.dataset.entity);
+        } else {
+          kvpModalState.anon.selectedEntities.delete(cb.dataset.entity);
+        }
+      });
+    });
+  }
+}
+
+function loadAnonPresetsIntoMenu() {
+  const menu = document.querySelector('.anon-preset-menu');
+  if (!menu || !masterAnonData) return;
+
+  menu.innerHTML = '';
+
+  // Add presets from master data (built-in)
+  Object.entries(masterAnonData.presets).forEach(([presetId, preset]) => {
+    const item = document.createElement('div');
+    item.className = 'anon-preset-item';
+    item.dataset.presetId = presetId;
+    item.textContent = preset.name;
+    item.addEventListener('click', () => applyAnonPreset(preset));
+    menu.appendChild(item);
+  });
+
+  // Add saved presets
+  const savedPresets = getAnonPresets();
+  if (savedPresets.length > 0) {
+    // Add separator
+    const separator = document.createElement('div');
+    separator.className = 'anon-preset-separator';
+    menu.appendChild(separator);
+
+    savedPresets.forEach(preset => {
+      const item = document.createElement('div');
+      item.className = 'anon-preset-item saved-preset';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'preset-name';
+      nameSpan.textContent = preset.name;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'preset-delete';
+      deleteBtn.title = 'Delete preset';
+      deleteBtn.innerHTML = '&times;';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete preset "${preset.name}"?`)) {
+          deleteAnonPreset(preset.name);
+          loadAnonPresetsIntoMenu();
+        }
+      });
+
+      // Click on item (but not delete button) applies preset
+      item.addEventListener('click', (e) => {
+        if (!e.target.closest('.preset-delete')) {
+          applyAnonPreset(preset, true);
+        }
+      });
+
+      item.appendChild(nameSpan);
+      item.appendChild(deleteBtn);
+      menu.appendChild(item);
+    });
+  }
+}
+
+function initAnonPresetDropdown() {
+  const dropdown = document.querySelector('.anon-preset-dropdown');
+  const menu = document.querySelector('.anon-preset-menu');
+
+  if (!dropdown || !menu || !masterAnonData) return;
+
+  // Populate preset menu
+  loadAnonPresetsIntoMenu();
+
+  // Toggle dropdown
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = menu.style.display !== 'none';
+    menu.style.display = isOpen ? 'none' : 'block';
+    dropdown.classList.toggle('open', !isOpen);
+  });
+
+  // Close on outside click
+  document.addEventListener('click', () => {
+    menu.style.display = 'none';
+    dropdown.classList.remove('open');
+  });
+
+  menu.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function applyAnonPreset(preset, isSaved = false) {
+  if (!preset) return;
+
+  // Clear current selections
+  kvpModalState.anon.selectedCategories = [];
+  kvpModalState.anon.selectedEntities.clear();
+  kvpModalState.anon.customEntities = [];
+
+  // Clear category chips
+  document.querySelector('.anon-selected-categories').innerHTML = '';
+
+  // Apply preset categories
+  preset.categories.forEach(categoryId => {
+    const category = masterAnonData.categories[categoryId];
+    if (category) {
+      selectAnonCategory(categoryId, category.name);
+    }
+  });
+
+  // For saved presets, also restore specific entity selections and custom entities
+  if (isSaved && preset.entities) {
+    // Clear auto-selected entities and apply saved ones
+    kvpModalState.anon.selectedEntities.clear();
+    preset.entities.forEach(entity => {
+      kvpModalState.anon.selectedEntities.add(entity);
+    });
+
+    // Restore custom entities
+    if (preset.customEntities) {
+      kvpModalState.anon.customEntities = [...preset.customEntities];
+    }
+
+    // Update checkboxes to match saved state
+    setTimeout(() => {
+      document.querySelectorAll('.anon-entity-checkbox input').forEach(cb => {
+        cb.checked = kvpModalState.anon.selectedEntities.has(cb.dataset.entity);
+      });
+      renderAnonCustomEntities();
+      updateAnonSelectAllState();
+    }, 0);
+  }
+
+  document.querySelector('.anon-preset-text').textContent = preset.name;
+
+  // Close menu
+  document.querySelector('.anon-preset-menu').style.display = 'none';
+  document.querySelector('.anon-preset-dropdown').classList.remove('open');
+}
+
+function initAnonCustomEntities() {
+  const input = document.querySelector('.anon-custom-entity-input');
+  const addBtn = document.querySelector('.anon-custom-entity-add');
+
+  if (!input || !addBtn) return;
+
+  function addCustomEntity() {
+    const value = input.value.trim().toUpperCase().replace(/\s+/g, '_');
+    if (!value) return;
+
+    // Check for duplicates
+    if (kvpModalState.anon.customEntities.includes(value) ||
+        kvpModalState.anon.selectedEntities.has(value)) {
+      input.value = '';
+      return;
+    }
+
+    kvpModalState.anon.customEntities.push(value);
+    kvpModalState.anon.selectedEntities.add(value);
+    input.value = '';
+    renderAnonCustomEntities();
+  }
+
+  addBtn.addEventListener('click', addCustomEntity);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addCustomEntity();
+    }
+  });
+}
+
+function renderAnonCustomEntities() {
+  let customSection = document.querySelector('.anon-custom-entities-section');
+  const container = document.querySelector('.anon-category-entities-container');
+
+  if (!customSection && kvpModalState.anon.customEntities.length > 0) {
+    customSection = document.createElement('div');
+    customSection.className = 'anon-entity-section anon-custom-entities-section';
+    customSection.innerHTML = `
+      <div class="anon-entity-section-header">
+        <span>Custom Entities</span>
+        <span class="anon-entity-section-count">${kvpModalState.anon.customEntities.length}</span>
+      </div>
+      <div class="anon-entity-section-content"></div>
+    `;
+    container.appendChild(customSection);
+  }
+
+  if (!customSection) return;
+
+  const content = customSection.querySelector('.anon-entity-section-content');
+  content.innerHTML = '';
+
+  kvpModalState.anon.customEntities.forEach(entity => {
+    const label = document.createElement('label');
+    label.className = 'anon-entity-checkbox custom-entity';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = kvpModalState.anon.selectedEntities.has(entity);
+    checkbox.dataset.entity = entity;
+
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        kvpModalState.anon.selectedEntities.add(entity);
+      } else {
+        kvpModalState.anon.selectedEntities.delete(entity);
+      }
+      updateAnonSelectAllState();
+    });
+
+    const span = document.createElement('span');
+    span.textContent = entity.replace(/_/g, ' ');
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-entity';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      kvpModalState.anon.customEntities = kvpModalState.anon.customEntities.filter(e => e !== entity);
+      kvpModalState.anon.selectedEntities.delete(entity);
+      renderAnonCustomEntities();
+      updateAnonSelectAllState();
+    });
+
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    label.appendChild(removeBtn);
+    content.appendChild(label);
+  });
+
+  // Update count
+  const countSpan = customSection.querySelector('.anon-entity-section-count');
+  if (countSpan) countSpan.textContent = kvpModalState.anon.customEntities.length;
+
+  // Remove section if empty
+  if (kvpModalState.anon.customEntities.length === 0 && customSection) {
+    customSection.remove();
+  }
+}
+
+// ==========================================
 // UPLOAD FUNCTIONALITY
 // ==========================================
 
@@ -1277,7 +3117,7 @@ function initUpload() {
 
   fileInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      showFormatModal(e.target.files);
+      showKvpConfigModal(e.target.files);
     }
   });
 
@@ -1298,10 +3138,61 @@ function initUpload() {
       uploadZone.classList.remove('dragging');
 
       if (e.dataTransfer.files.length > 0) {
-        showFormatModal(e.dataTransfer.files);
+        showKvpConfigModal(e.dataTransfer.files);
       }
     });
   }
+
+  // Global drag overlay effect
+  initGlobalDragOverlay();
+}
+
+function initGlobalDragOverlay() {
+  // Create overlay element with icon and text
+  const overlay = document.createElement('div');
+  overlay.className = 'drag-overlay';
+  overlay.innerHTML = `
+    <svg class="drag-overlay-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="17 8 12 3 7 8"></polyline>
+      <line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+    <span class="drag-overlay-text">Drop your files here.</span>
+  `;
+  document.body.appendChild(overlay);
+
+  let dragCounter = 0;
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) {
+      overlay.classList.add('active');
+    }
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      overlay.classList.remove('active');
+    }
+  });
+
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.remove('active');
+
+    // Handle file drop from anywhere on screen
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      showKvpConfigModal(e.dataTransfer.files);
+    }
+  });
 }
 
 let selectedFileForUpload = null;
