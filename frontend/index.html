@@ -499,11 +499,17 @@
         <button class="modal-close" id="closeKvpConfigModal">&times;</button>
       </div>
 
+      <!-- Header Info -->
+      <div class="review-header-info" id="kvpHeaderInfo">
+        <span class="review-header-filename" id="kvpFileName">document.pdf</span>
+        <span class="review-header-meta" id="kvpFileMeta"></span>
+      </div>
+
       <!-- Tab Bar -->
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="kvp" type="button">KEY-VALUE PAIRS</button>
         <button class="modal-tab" data-tab="anon" type="button">ANONYMIZATION</button>
-        <button class="modal-tab" data-tab="text" type="button">EXTRACT CLEAN TEXT</button>
+        <button class="modal-tab" data-tab="text" type="button">CLEAN TEXT</button>
       </div>
 
       <div class="modal-body">
@@ -521,6 +527,9 @@
               </div>
             </div>
           </div>
+
+          <!-- Draggable Divider -->
+          <div class="kvp-layout-divider" title="Drag to resize"></div>
 
           <!-- Right Main: Tab Panels -->
           <div class="kvp-layout-main">
@@ -582,7 +591,7 @@
             </div>
 
             <!-- Field Selection -->
-            <div class="kvp-config-section">
+            <div class="kvp-config-section kvp-fields-section">
               <label class="kvp-config-label">KEY-VALUE PAIRS TO EXTRACT</label>
               <div class="kvp-field-list">
                 <!-- Select All -->
@@ -703,6 +712,93 @@
           <button class="btn-modal-cancel" id="kvpCancel">Cancel</button>
           <button class="btn-modal-confirm" id="kvpProcess">Process <span class="kvp-file-count-btn">0</span> Files</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review Modal (Post-Processing) -->
+  <div class="modal-overlay" id="reviewModal">
+    <div class="modal-content modal-review">
+      <!-- Close Button Row -->
+      <div class="modal-close-row">
+        <button class="modal-close" id="closeReviewModal">&times;</button>
+      </div>
+
+      <!-- Header Info -->
+      <div class="review-header-info">
+        <span class="review-header-filename" id="reviewFileName">document.pdf</span>
+        <span class="review-header-meta"><span id="reviewMetaPages">0</span> pages &bull; Processed <span id="reviewMetaDate">-</span></span>
+      </div>
+
+      <!-- Tab Bar -->
+      <div class="review-tabs">
+        <button class="review-tab-btn active" data-tab="kvp" type="button">KEY-VALUE PAIRS</button>
+        <button class="review-tab-btn" data-tab="anon" type="button">ANONYMIZATION</button>
+        <button class="review-tab-btn" data-tab="text" type="button">CLEAN TEXT</button>
+      </div>
+
+      <!-- Three-Column Body -->
+      <div class="modal-body review-modal-body">
+        <div class="review-layout">
+          <!-- LEFT: Page Thumbnails -->
+          <div class="review-layout-pages">
+            <div class="review-pages-header">
+              <span class="review-pages-label">PAGES</span>
+              <span class="review-pages-count" id="reviewPagesCount">(0)</span>
+            </div>
+            <div class="review-pages-list" id="reviewPagesList">
+              <!-- Dynamically populated page thumbnails -->
+            </div>
+          </div>
+
+          <!-- CENTER: Original Page Preview -->
+          <div class="review-layout-preview">
+            <div class="review-preview-header">
+              <span class="review-preview-label">ORIGINAL</span>
+              <div class="review-page-nav">
+                <button class="review-nav-btn" id="reviewPrevPage" type="button">&#9664;</button>
+                <span class="review-page-indicator">Page <span id="currentPageNum">1</span> of <span id="totalPageNum">1</span></span>
+                <button class="review-nav-btn" id="reviewNextPage" type="button">&#9654;</button>
+              </div>
+            </div>
+            <div class="review-preview-container" id="reviewPreviewContainer">
+              <img class="review-preview-image" id="reviewPreviewImage" src="" alt="Original page" />
+            </div>
+            <div class="review-collapse-hint">
+              <span class="review-collapse-key">K</span>
+              <span class="review-collapse-text">to collapse</span>
+            </div>
+          </div>
+
+          <!-- Draggable Divider -->
+          <div class="review-layout-divider" id="reviewDivider"></div>
+
+          <!-- RIGHT: KVP Panel -->
+          <div class="review-layout-kvp">
+            <div class="review-kvp-header">
+              <span class="review-kvp-label" id="reviewKvpLabel">EXTRACTED DATA</span>
+              <div class="review-kvp-mode-toggle" id="reviewKvpModeToggle">
+                <button type="button" class="kvp-mode-btn active" data-mode="aggregated">Aggregated</button>
+                <button type="button" class="kvp-mode-btn" data-mode="perPage">Per-Page</button>
+              </div>
+            </div>
+            <div class="review-kvp-page-indicator" id="reviewKvpPageIndicator">
+              KVPs for Page <span id="kvpPageNumber">1</span>
+            </div>
+            <div class="review-kvp-list" id="reviewKvpList">
+              <!-- Editable KVP rows will be inserted here -->
+            </div>
+            <div class="review-expand-hint">
+              <span class="review-collapse-key">K</span>
+              <span class="review-collapse-text">to expand</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer review-modal-footer">
+        <button class="btn-modal-secondary" id="reviewReprocessBtn" type="button">Reprocess Page</button>
       </div>
     </div>
   </div>

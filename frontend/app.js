@@ -1045,6 +1045,19 @@ function renderFilesList() {
       }
     });
   });
+
+  // Setup Review button click handlers
+  const reviewButtons = document.querySelectorAll('.review-btn');
+  reviewButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fileName = btn.dataset.file;
+      // Find the file's task ID from filesData (for now, use filename as ID)
+      const fileData = filesData.find(f => f.name === fileName);
+      const fileId = fileData?.id || fileName;
+      showReviewModal(fileId, fileName);
+    });
+  });
 }
 
 // ==========================================
@@ -1683,6 +1696,22 @@ function showKvpConfigModal(files) {
   // Update file count in button
   updateKvpFileCount();
 
+  // Update header filename display
+  const filenameEl = document.getElementById('kvpFileName');
+  const metaEl = document.getElementById('kvpFileMeta');
+  if (filenameEl && metaEl) {
+    if (kvpModalState.files.length === 1) {
+      filenameEl.textContent = kvpModalState.files[0].name;
+      metaEl.textContent = '';
+    } else if (kvpModalState.files.length > 1) {
+      filenameEl.textContent = `${kvpModalState.files.length} files selected`;
+      metaEl.textContent = '';
+    } else {
+      filenameEl.textContent = 'No files selected';
+      metaEl.textContent = '';
+    }
+  }
+
   // Show modal
   document.getElementById('kvpConfigModal').classList.add('show');
 }
@@ -1696,16 +1725,36 @@ function hideKvpConfigModal() {
   }, 100);
 }
 
+// Truncate filename in the middle, preserving start and extension
+function truncateMiddle(filename, maxLength = 28) {
+  if (filename.length <= maxLength) return filename;
+
+  const extIndex = filename.lastIndexOf('.');
+  const ext = extIndex > 0 ? filename.slice(extIndex) : '';
+  const name = extIndex > 0 ? filename.slice(0, extIndex) : filename;
+
+  // Reserve space for extension + ellipsis
+  const availableLength = maxLength - ext.length - 3; // 3 for "..."
+  if (availableLength < 4) return filename.slice(0, maxLength - 3) + '...';
+
+  const startLength = Math.ceil(availableLength / 2);
+  const endLength = Math.floor(availableLength / 2);
+
+  return name.slice(0, startLength) + '...' + name.slice(-endLength) + ext;
+}
+
 function populateKvpFileList() {
   const container = document.querySelector('.kvp-file-list-items');
   if (!container) return;
 
   const fileItems = kvpModalState.files.map((file, index) => {
     const isChecked = kvpModalState.selectedFileIndices.has(index);
+    const displayName = truncateMiddle(file.name, 32);
+    const needsTooltip = file.name.length > 32;
     return `
     <label class="kvp-file-item">
       <input type="checkbox" data-file-index="${index}" ${isChecked ? 'checked' : ''} />
-      <span class="kvp-file-name">${file.name}</span>
+      <span class="kvp-file-name"${needsTooltip ? ` title="${file.name}"` : ''}>${displayName}</span>
     </label>
   `;
   }).join('');
@@ -1783,6 +1832,7 @@ function updateKvpFileCount() {
   }
 }
 
+let kvpSectorDropdownInitialized = false;
 function initKvpSectorDropdown() {
   const dropdown = document.querySelector('.kvp-sector-dropdown');
   const menu = document.querySelector('.kvp-sector-menu');
@@ -1791,6 +1841,8 @@ function initKvpSectorDropdown() {
   const selectedContainer = document.querySelector('.kvp-selected-sectors');
 
   if (!dropdown || !menu || !list) return;
+  if (kvpSectorDropdownInitialized) return;
+  kvpSectorDropdownInitialized = true;
 
   // Populate sector list
   const sectors = getSectorList();
@@ -2030,14 +2082,19 @@ function initKvpFieldList() {
   }
 }
 
+let kvpPresetDropdownInitialized = false;
 function initKvpPresetDropdown() {
   const dropdown = document.querySelector('.kvp-preset-dropdown');
   const menu = document.querySelector('.kvp-preset-menu');
 
   if (!dropdown || !menu) return;
 
-  // Load presets into menu
+  // Load presets into menu (always refresh)
   loadKvpPresetsIntoMenu(menu);
+
+  // Only add event listeners once
+  if (kvpPresetDropdownInitialized) return;
+  kvpPresetDropdownInitialized = true;
 
   // Toggle dropdown
   dropdown.addEventListener('click', (e) => {
@@ -2379,6 +2436,17 @@ function handleKvpProcess() {
     return;
   }
 
+  // Validate field/entity selection
+  if (kvpModalState.enabledSteps.kvp && kvpModalState.selectedFields.size === 0) {
+    alert('Please select at least one field to extract, or disable key-value extraction.');
+    return;
+  }
+
+  if (kvpModalState.enabledSteps.anon && kvpModalState.anon.selectedEntities.size === 0) {
+    alert('Please select at least one entity to detect, or disable anonymization.');
+    return;
+  }
+
   const config = {
     files: selectedFiles,
     // KVP extraction config
@@ -2584,15 +2652,67 @@ function initKvpConfigModal() {
       hideKvpConfigModal();
     }
   });
+
+  // Initialize draggable divider
+  initLayoutDivider();
+}
+
+// Initialize draggable divider for resizing sidebar
+let layoutDividerInitialized = false;
+function initLayoutDivider() {
+  const divider = document.querySelector('.kvp-layout-divider');
+  const sidebar = document.querySelector('.kvp-layout-sidebar');
+  if (!divider || !sidebar) return;
+  if (layoutDividerInitialized) return;
+  layoutDividerInitialized = true;
+
+  let isDragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  divider.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startWidth = sidebar.offsetWidth;
+    divider.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const delta = e.clientX - startX;
+    const newWidth = Math.min(Math.max(startWidth + delta, 200), 500);
+    sidebar.style.width = newWidth + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      divider.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
 }
 
 // ==========================================
 // MODAL TABS
 // ==========================================
 
+let modalTabsInitialized = false;
 function initModalTabs() {
-  const tabs = document.querySelectorAll('.modal-tab');
+  // Reset to KVP tab and sync toggle states (always do this)
+  syncPanelToggleStates();
+  switchToTab('kvp');
 
+  // Only add event listeners once
+  if (modalTabsInitialized) return;
+  modalTabsInitialized = true;
+
+  const tabs = document.querySelectorAll('.modal-tab');
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       switchToTab(tab.dataset.tab);
@@ -2601,12 +2721,31 @@ function initModalTabs() {
 
   // Initialize panel enable toggles
   initPanelEnableToggles();
-
-  // Reset to KVP tab
-  switchToTab('kvp');
 }
 
+function syncPanelToggleStates() {
+  const toggleMap = {
+    kvp: document.getElementById('kvpEnabled'),
+    anon: document.getElementById('anonEnabled'),
+    text: document.getElementById('textEnabled')
+  };
+
+  Object.entries(toggleMap).forEach(([panelName, toggle]) => {
+    if (!toggle) return;
+    const panel = document.querySelector(`.tab-panel[data-panel="${panelName}"]`);
+    const content = panel?.querySelector('.panel-content');
+    toggle.checked = kvpModalState.enabledSteps[panelName];
+    if (content) {
+      content.classList.toggle('disabled', !toggle.checked);
+    }
+  });
+}
+
+let panelTogglesInitialized = false;
 function initPanelEnableToggles() {
+  if (panelTogglesInitialized) return;
+  panelTogglesInitialized = true;
+
   const toggleMap = {
     kvp: document.getElementById('kvpEnabled'),
     anon: document.getElementById('anonEnabled'),
@@ -2618,12 +2757,6 @@ function initPanelEnableToggles() {
 
     const panel = document.querySelector(`.tab-panel[data-panel="${panelName}"]`);
     const content = panel?.querySelector('.panel-content');
-
-    // Initialize state
-    toggle.checked = kvpModalState.enabledSteps[panelName];
-    if (content) {
-      content.classList.toggle('disabled', !toggle.checked);
-    }
 
     // Handle changes
     toggle.addEventListener('change', () => {
@@ -2667,6 +2800,7 @@ async function loadAnonEntities() {
   }
 }
 
+let anonCategoryDropdownInitialized = false;
 function initAnonCategoryDropdown() {
   const dropdown = document.querySelector('.anon-category-dropdown');
   const menu = document.querySelector('.anon-category-menu');
@@ -2675,7 +2809,7 @@ function initAnonCategoryDropdown() {
 
   if (!dropdown || !menu || !list || !masterAnonData) return;
 
-  // Populate category list
+  // Populate category list (always refresh)
   list.innerHTML = '';
   Object.entries(masterAnonData.categories).forEach(([categoryId, category]) => {
     const item = document.createElement('div');
@@ -2685,6 +2819,10 @@ function initAnonCategoryDropdown() {
     item.addEventListener('click', () => selectAnonCategory(categoryId, category.name));
     list.appendChild(item);
   });
+
+  // Only add event listeners once
+  if (anonCategoryDropdownInitialized) return;
+  anonCategoryDropdownInitialized = true;
 
   // Toggle dropdown
   dropdown.addEventListener('click', (e) => {
@@ -2928,14 +3066,19 @@ function loadAnonPresetsIntoMenu() {
   }
 }
 
+let anonPresetDropdownInitialized = false;
 function initAnonPresetDropdown() {
   const dropdown = document.querySelector('.anon-preset-dropdown');
   const menu = document.querySelector('.anon-preset-menu');
 
   if (!dropdown || !menu || !masterAnonData) return;
 
-  // Populate preset menu
+  // Populate preset menu (always refresh)
   loadAnonPresetsIntoMenu();
+
+  // Only add event listeners once
+  if (anonPresetDropdownInitialized) return;
+  anonPresetDropdownInitialized = true;
 
   // Toggle dropdown
   dropdown.addEventListener('click', (e) => {
@@ -3103,6 +3246,946 @@ function renderAnonCustomEntities() {
   if (kvpModalState.anon.customEntities.length === 0 && customSection) {
     customSection.remove();
   }
+}
+
+// ==========================================
+// REVIEW MODAL (Post-Processing)
+// ==========================================
+
+let reviewModalState = {
+  // File being reviewed
+  fileId: null,
+  fileName: null,
+
+  // Page navigation
+  currentPage: 1,
+  totalPages: 0,
+
+  // View mode
+  activeTab: 'kvp',        // 'kvp' | 'anon' | 'text'
+  viewMode: 'extracted',   // 'extracted' | 'original'
+  kvpViewMode: 'aggregated', // 'aggregated' | 'perPage'
+  aggregatedKvps: [],        // Cached aggregated KVP data
+  aggregatedAnon: [],        // Cached aggregated ANON data
+
+  // Processed data (loaded from backend)
+  processedData: {
+    kvp: [],               // Array of { page, key, value, confidence }
+    anon: [],              // Array of { page, entity, original, redacted, visible }
+    text: []               // Array of { page, content }
+  },
+
+  // Edits tracking (for save/undo)
+  edits: {
+    kvp: new Map(),        // key -> new value
+    anon: new Map(),       // entity index -> visibility toggle
+    text: new Map()        // page -> edited content
+  },
+
+  // UI state
+  hasUnsavedChanges: false,
+  errors: [],              // OCR confidence issues, etc.
+
+  // Processing modes that were enabled
+  enabledModes: {
+    kvp: true,
+    anon: false,
+    text: false
+  }
+};
+
+// Mock data for development (replace with API call later)
+const mockReviewData = {
+  fileName: 'sample-document.pdf',
+  totalPages: 5,
+  processedModes: ['kvp', 'anon', 'text'],
+  pages: [
+    {
+      pageNumber: 1,
+      imageUrl: 'assets/mock-original.png',
+      kvp: [
+        { key: 'document_type', value: 'Insurance Declaration', confidence: 95 },
+        { key: 'policy_number', value: '4382-82-61-23', confidence: 98 },
+        { key: 'coverage_period', value: '09-26-23 through 03-26-24', confidence: 92 },
+        { key: 'named_insured', value: 'Julia Y Su and Arthur Frankstein', confidence: 89 },
+        { key: 'total_premium', value: '$2,353.80', confidence: 97 }
+      ],
+      anon: [
+        { entity: 'NAME', original: 'Julia Y Su', redacted: '[NAME_1]', confidence: 98 },
+        { entity: 'NAME', original: 'Arthur Frankstein', redacted: '[NAME_2]', confidence: 95 },
+        { entity: 'ADDRESS', original: '1234 Oak Street', redacted: '[ADDRESS]', confidence: 92 },
+        { entity: 'CITY', original: 'San Francisco', redacted: '[CITY]', confidence: 99 },
+        { entity: 'STATE', original: 'CA', redacted: '[STATE]', confidence: 99 },
+        { entity: 'ZIP_CODE', original: '94102', redacted: '[ZIP]', confidence: 97 },
+        { entity: 'PHONE_NUMBER', original: '(415) 555-1234', redacted: '[PHONE]', confidence: 94 },
+        { entity: 'SSN', original: '123-45-6789', redacted: '[SSN]', confidence: 99 }
+      ],
+      text: 'PERSONAL AUTO POLICY DECLARATIONS\n\nPolicy Number: 4382-82-61-23\nPolicy Period: September 26, 2023 to March 26, 2024\n\nNamed Insured:\nJulia Y Su\nArthur Frankstein\n1234 Oak Street\nSan Francisco, CA 94102\n\nInsurance Company: Pacific Coast Insurance\nAgent: Bay Area Insurance Services\nPhone: (415) 555-1234'
+    },
+    {
+      pageNumber: 2,
+      kvp: [
+        { key: 'line_item_1', value: 'Professional Services', confidence: 89 },
+        { key: 'amount_1', value: '$800.00', confidence: 94 },
+        { key: 'line_item_2', value: 'Consulting Fee', confidence: 85 },
+        { key: 'amount_2', value: '$434.56', confidence: 92 }
+      ],
+      anon: [
+        { entity: 'DOB', original: '03/15/1985', redacted: '[DOB]', confidence: 88 },
+        { entity: 'HEALTHCARE_NUMBER', original: 'MRN-2024-78542', redacted: '[MRN]', confidence: 91 },
+        { entity: 'CONDITION', original: 'Type 2 Diabetes', redacted: '[CONDITION]', confidence: 76 },
+        { entity: 'DRUG', original: 'Metformin 500mg', redacted: '[DRUG]', confidence: 82 }
+      ],
+      text: 'COVERAGE SUMMARY\n\nVehicle 1: 2021 Toyota Camry LE\nVIN: 4T1BF1FK5MU123456\n\nLiability Coverage:\n  Bodily Injury: $100,000 / $300,000\n  Property Damage: $50,000\n\nCollision: $500 Deductible\nComprehensive: $250 Deductible\n\nUninsured Motorist: $100,000 / $300,000\nMedical Payments: $5,000'
+    },
+    {
+      pageNumber: 3,
+      kvp: [
+        { key: 'payment_terms', value: 'Net 30', confidence: 67 },
+        { key: 'due_date', value: '2025-02-14', confidence: 58 }
+      ],
+      anon: [
+        { entity: 'NAME', original: 'Julia Y Su', redacted: '[NAME_1]', confidence: 97 },
+        { entity: 'ORGANIZATION', original: 'Blue Shield of California', redacted: '[ORG]', confidence: 94 },
+        { entity: 'ORGANIZATION_ID', original: 'TIN: 94-1234567', redacted: '[ORG_ID]', confidence: 89 },
+        { entity: 'BANK_ACCOUNT', original: 'XXXX-XXXX-1234', redacted: '[BANK]', confidence: 96 },
+        { entity: 'CREDIT_CARD', original: '4111-XXXX-XXXX-1234', redacted: '[CC]', confidence: 58 }
+      ],
+      text: 'PREMIUM BREAKDOWN\n\nLiability Premium: $456.00\nCollision Premium: $312.00\nComprehensive Premium: $198.00\nUninsured Motorist: $142.00\nMedical Payments: $48.00\n\nSubtotal: $1,156.00\nMulti-Policy Discount: -$115.60\nSafe Driver Discount: -$86.60\n\nTOTAL SEMI-ANNUAL PREMIUM: $953.80\n\nPayment Schedule:\n  Due 09/26/23: $476.90\n  Due 12/26/23: $476.90'
+    },
+    {
+      pageNumber: 4,
+      kvp: [
+        { key: 'notes', value: 'Thank you for your business', confidence: 82 }
+      ],
+      anon: [
+        { entity: 'EMAIL_ADDRESS', original: 'julia.su@email.com', redacted: '[EMAIL]', confidence: 99 },
+        { entity: 'PHONE_NUMBER', original: '(415) 555-1234', redacted: '[PHONE]', confidence: 94 },
+        { entity: 'IP_ADDRESS', original: '192.168.1.100', redacted: '[IP]', confidence: 91 }
+      ],
+      text: 'IMPORTANT NOTICES\n\nThis policy provides the coverage described herein subject to all terms, conditions, and exclusions. Please read your policy carefully.\n\nTo report a claim:\n  Phone: 1-800-555-CLAIM (2524)\n  Online: www.pacificcoastins.com/claims\n  Email: claims@pacificcoastins.com\n\nFor policy questions or changes:\n  Contact your agent: Bay Area Insurance Services\n  Phone: (415) 555-1234\n  Email: julia.su@email.com'
+    },
+    {
+      pageNumber: 5,
+      kvp: [],
+      anon: [
+        { entity: 'NAME', original: 'Dr. Sarah Chen', redacted: '[NAME_3]', confidence: 93 },
+        { entity: 'LICENSE_PLATE', original: '7ABC123', redacted: '[PLATE]', confidence: 67 }
+      ],
+      text: 'POLICYHOLDER ACKNOWLEDGMENT\n\nI acknowledge receipt of this policy declarations page and understand that it summarizes my coverage. I have reviewed the named insured information, vehicle details, and coverage limits and confirm they are accurate.\n\n\nSignature: _______________________\n\nDate: _______________________\n\n\nThank you for choosing Pacific Coast Insurance.'
+    }
+  ],
+  errors: [
+    { page: 3, type: 'low_confidence', message: 'OCR confidence below 70%' }
+  ]
+};
+
+let reviewModalInitialized = false;
+
+function showReviewModal(fileId, fileName) {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+
+  // Reset state
+  reviewModalState.fileId = fileId;
+  reviewModalState.fileName = fileName || 'document.pdf';
+  reviewModalState.currentPage = 1;
+  reviewModalState.hasUnsavedChanges = false;
+  reviewModalState.viewMode = 'extracted';
+  reviewModalState.edits = { kvp: new Map(), anon: new Map(), text: new Map() };
+
+  // Load mock data (later: fetch from API)
+  loadReviewData(fileId);
+
+  // Initialize modal if not done yet
+  if (!reviewModalInitialized) {
+    initReviewModal();
+    reviewModalInitialized = true;
+  }
+
+  // Show modal
+  modal.classList.add('show');
+  document.body.style.overflow = 'hidden';
+
+  // Hide tabs for modes that weren't processed
+  updateReviewTabVisibility();
+
+  // Render initial view
+  renderReviewPageThumbnails();
+  renderReviewPageContent();
+  renderReviewMetadata();
+  updateReviewSaveButton();
+}
+
+/**
+ * Show/hide review modal tabs based on which modes were enabled during processing
+ */
+function updateReviewTabVisibility() {
+  const kvpTab = document.querySelector('#reviewModal [data-tab="kvp"]');
+  const anonTab = document.querySelector('#reviewModal [data-tab="anon"]');
+  const textTab = document.querySelector('#reviewModal [data-tab="text"]');
+
+  if (kvpTab) kvpTab.style.display = reviewModalState.enabledModes.kvp ? '' : 'none';
+  if (anonTab) anonTab.style.display = reviewModalState.enabledModes.anon ? '' : 'none';
+  if (textTab) textTab.style.display = reviewModalState.enabledModes.text ? '' : 'none';
+
+  // Default to first enabled tab
+  const firstEnabled = reviewModalState.enabledModes.kvp ? 'kvp'
+    : reviewModalState.enabledModes.anon ? 'anon'
+    : reviewModalState.enabledModes.text ? 'text'
+    : 'kvp'; // fallback
+
+  // Set initial tab
+  reviewModalState.activeTab = firstEnabled;
+  switchReviewTab(firstEnabled);
+}
+
+function hideReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+
+  // Check for unsaved changes
+  if (reviewModalState.hasUnsavedChanges) {
+    const confirmed = confirm('You have unsaved changes. Are you sure you want to close?');
+    if (!confirmed) return;
+  }
+
+  modal.classList.remove('show');
+  document.body.style.overflow = '';
+
+  // Reset state
+  reviewModalState.fileId = null;
+  reviewModalState.fileName = null;
+  reviewModalState.processedData = { pages: [], kvp: [], anon: [], text: [] };
+  reviewModalState.errors = [];
+}
+
+function loadReviewData(fileId) {
+  // TODO: Replace with actual API call
+  // const response = await fetch(`/api/tasks/${fileId}/review`);
+  // const data = await response.json();
+
+  // Use mock data for now
+  const data = mockReviewData;
+
+  reviewModalState.totalPages = data.totalPages;
+  reviewModalState.processedData = {
+    pages: data.pages,
+    kvp: data.pages.flatMap(p => p.kvp.map(k => ({ ...k, page: p.pageNumber }))),
+    anon: data.pages.flatMap(p => p.anon.map(a => ({ ...a, page: p.pageNumber }))),
+    text: data.pages.map(p => ({ page: p.pageNumber, content: p.text }))
+  };
+  reviewModalState.errors = data.errors || [];
+
+  // Determine which modes were processed
+  reviewModalState.enabledModes = {
+    kvp: data.processedModes.includes('kvp'),
+    anon: data.processedModes.includes('anon'),
+    text: data.processedModes.includes('text')
+  };
+
+  // Update page count display
+  const totalPagesEl = document.getElementById('totalPageNum');
+  if (totalPagesEl) totalPagesEl.textContent = reviewModalState.totalPages;
+
+  // Pre-compute aggregated KVPs and ANON data
+  aggregateKvps();
+  aggregateAnon();
+
+  // Update toggle visibility
+  updateKvpToggleVisibility();
+}
+
+/**
+ * Aggregate KVPs across all pages, grouping by key
+ */
+function aggregateKvps() {
+  const kvpMap = new Map();
+
+  for (const kvp of reviewModalState.processedData.kvp) {
+    const key = kvp.key;
+    const existing = kvpMap.get(key);
+
+    if (existing) {
+      if (existing.value === kvp.value) {
+        // Same value: merge, track pages, use max confidence
+        existing.pages.push(kvp.page);
+        existing.confidence = Math.max(existing.confidence, kvp.confidence);
+      } else {
+        // Different value: create variant
+        const variantKey = `${key}_p${kvp.page}`;
+        kvpMap.set(variantKey, {
+          key: variantKey,
+          displayKey: key,
+          value: kvp.value,
+          confidence: kvp.confidence,
+          pages: [kvp.page],
+          isVariant: true
+        });
+      }
+    } else {
+      kvpMap.set(key, {
+        key,
+        displayKey: key,
+        value: kvp.value,
+        confidence: kvp.confidence,
+        pages: [kvp.page],
+        isVariant: false
+      });
+    }
+  }
+
+  // Convert to sorted array
+  reviewModalState.aggregatedKvps = Array.from(kvpMap.values())
+    .sort((a, b) => {
+      const pageCompare = Math.min(...a.pages) - Math.min(...b.pages);
+      if (pageCompare !== 0) return pageCompare;
+      return a.displayKey.localeCompare(b.displayKey);
+    });
+}
+
+/**
+ * Aggregate anonymization entities across all pages
+ * Same entity+original: merge, track pages[], use max confidence
+ * Same entity, different original: separate rows
+ */
+function aggregateAnon() {
+  const anonMap = new Map();
+
+  for (const item of reviewModalState.processedData.anon) {
+    // Create unique key from entity type + original value
+    const uniqueKey = `${item.entity}::${item.original}`;
+    const existing = anonMap.get(uniqueKey);
+
+    if (existing) {
+      // Same entity + same original: merge, track pages, use max confidence
+      existing.pages.push(item.page);
+      existing.confidence = Math.max(existing.confidence || 0, item.confidence || 0);
+    } else {
+      anonMap.set(uniqueKey, {
+        entity: item.entity,
+        original: item.original,
+        redacted: item.redacted,
+        confidence: item.confidence || 0,
+        pages: [item.page]
+      });
+    }
+  }
+
+  // Convert to sorted array (by entity type, then by first page appearance)
+  reviewModalState.aggregatedAnon = Array.from(anonMap.values())
+    .sort((a, b) => {
+      const entityCompare = a.entity.localeCompare(b.entity);
+      if (entityCompare !== 0) return entityCompare;
+      return Math.min(...a.pages) - Math.min(...b.pages);
+    });
+}
+
+/**
+ * Switch between Aggregated and Per-Page view modes
+ */
+function switchKvpViewMode(mode) {
+  if (mode === reviewModalState.kvpViewMode) return;
+
+  reviewModalState.kvpViewMode = mode;
+
+  // Update toggle button states
+  document.querySelectorAll('.kvp-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+
+  // Update page indicator visibility
+  const pageIndicator = document.getElementById('reviewKvpPageIndicator');
+  if (pageIndicator) {
+    pageIndicator.classList.toggle('visible', mode === 'perPage');
+    if (mode === 'perPage') {
+      document.getElementById('kvpPageNumber').textContent = reviewModalState.currentPage;
+    }
+  }
+
+  // Re-render content based on active tab
+  const activeTab = reviewModalState.activeTab;
+  if (activeTab === 'kvp') {
+    renderReviewKvpContent(reviewModalState.currentPage);
+  } else if (activeTab === 'anon') {
+    renderReviewAnonContent(reviewModalState.currentPage);
+  } else if (activeTab === 'text') {
+    renderReviewTextContent(reviewModalState.currentPage);
+  }
+}
+
+/**
+ * Update toggle visibility based on context
+ */
+function updateKvpToggleVisibility() {
+  const toggle = document.getElementById('reviewKvpModeToggle');
+  if (!toggle) return;
+
+  const isSinglePage = reviewModalState.totalPages <= 1;
+  const activeTab = reviewModalState.activeTab;
+  const isToggleableTab = activeTab === 'kvp' || activeTab === 'anon' || activeTab === 'text';
+
+  // Hide for single-page PDFs
+  toggle.classList.toggle('hidden', isSinglePage);
+
+  // Show toggle for all three tabs now
+  toggle.classList.toggle('disabled', !isToggleableTab);
+}
+
+/**
+ * Get confidence class based on percentage
+ */
+function getConfidenceClass(confidence) {
+  if (confidence >= 90) return 'high';
+  if (confidence >= 70) return 'medium';
+  return 'low';
+}
+
+/**
+ * Handle KVP input change
+ */
+function handleKvpInputChange(e) {
+  const input = e.target;
+  const editKey = input.dataset.editKey;
+  const originalValue = input.dataset.original;
+  const newValue = input.value;
+
+  if (newValue !== originalValue) {
+    reviewModalState.edits.kvp.set(editKey, newValue);
+    reviewModalState.hasUnsavedChanges = true;
+    input.classList.add('modified');
+  } else {
+    reviewModalState.edits.kvp.delete(editKey);
+    input.classList.remove('modified');
+    reviewModalState.hasUnsavedChanges =
+      reviewModalState.edits.kvp.size > 0 ||
+      reviewModalState.edits.anon.size > 0 ||
+      reviewModalState.edits.text.size > 0;
+  }
+}
+
+/**
+ * Trigger re-extraction for current page
+ */
+function reextractCurrentPage() {
+  const page = reviewModalState.currentPage;
+  console.log(`Re-extracting page ${page}...`);
+  // Trigger existing reprocess flow
+  document.getElementById('reviewReprocessBtn')?.click();
+}
+
+function initReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+
+  // Close button
+  document.getElementById('closeReviewModal')?.addEventListener('click', hideReviewModal);
+
+  // Save button
+  document.getElementById('reviewSave')?.addEventListener('click', handleReviewSave);
+
+  // Page navigation
+  document.getElementById('reviewPrevPage')?.addEventListener('click', () => {
+    if (reviewModalState.currentPage > 1) {
+      reviewModalState.currentPage--;
+      updateReviewPageNavigation();
+      renderReviewPageContent();
+      highlightCurrentPageThumb();
+    }
+  });
+
+  document.getElementById('reviewNextPage')?.addEventListener('click', () => {
+    if (reviewModalState.currentPage < reviewModalState.totalPages) {
+      reviewModalState.currentPage++;
+      updateReviewPageNavigation();
+      renderReviewPageContent();
+      highlightCurrentPageThumb();
+    }
+  });
+
+  // Keyboard navigation (no Escape close - only close button)
+  document.addEventListener('keydown', (e) => {
+    if (!modal.classList.contains('show')) return;
+
+    if (e.key === 'ArrowLeft' && !e.target.matches('input, textarea')) {
+      document.getElementById('reviewPrevPage')?.click();
+    } else if (e.key === 'ArrowRight' && !e.target.matches('input, textarea')) {
+      document.getElementById('reviewNextPage')?.click();
+    } else if ((e.key === 'k' || e.key === 'K') && !e.target.matches('input, textarea')) {
+      toggleReviewPreviewCollapse();
+    }
+  });
+
+  // Reprocess button
+  document.getElementById('reviewReprocessBtn')?.addEventListener('click', toggleReprocessOptions);
+
+  // Tab switching
+  document.querySelectorAll('.review-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      switchReviewTab(tab);
+    });
+  });
+
+  // KVP Mode Toggle (Aggregated/Per-Page)
+  document.querySelectorAll('.kvp-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchKvpViewMode(btn.dataset.mode);
+    });
+  });
+
+  // Draggable divider
+  const divider = document.getElementById('reviewDivider');
+  const previewPanel = modal.querySelector('.review-layout-preview');
+  if (divider && previewPanel) {
+    let isDragging = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    divider.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startWidth = previewPanel.offsetWidth;
+      divider.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const delta = e.clientX - startX;
+      const newWidth = Math.max(250, Math.min(600, startWidth + delta));
+      previewPanel.style.width = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  }
+}
+
+function toggleReviewPreviewCollapse() {
+  const previewPanel = document.querySelector('.review-layout-preview');
+  const divider = document.getElementById('reviewDivider');
+  const hint = document.querySelector('.review-collapse-hint');
+
+  if (!previewPanel) return;
+
+  const isCollapsed = previewPanel.classList.toggle('collapsed');
+
+  if (divider) {
+    divider.classList.toggle('hidden', isCollapsed);
+  }
+
+  // Update hint text
+  if (hint) {
+    const textSpan = hint.querySelector('.review-collapse-text');
+    if (textSpan) {
+      textSpan.textContent = isCollapsed ? 'to expand' : 'to collapse';
+    }
+  }
+}
+
+function switchReviewTab(tab) {
+  // Update tab buttons
+  document.querySelectorAll('.review-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Store active tab
+  reviewModalState.activeTab = tab;
+
+  // Update toggle visibility (enable for KVP and ANON tabs)
+  updateKvpToggleVisibility();
+
+  // Update col 3 header label
+  const kvpLabel = document.querySelector('#reviewKvpLabel');
+  if (kvpLabel) {
+    const labels = { kvp: 'EXTRACTED DATA', anon: 'DETECTED PII', text: 'TEXT CONTENT' };
+    kvpLabel.textContent = labels[tab] || 'EXTRACTED DATA';
+  }
+
+  // Show page indicator for KVP and ANON tabs when in per-page mode
+  const pageIndicator = document.getElementById('reviewKvpPageIndicator');
+  if (pageIndicator) {
+    const showIndicator = (tab === 'kvp' || tab === 'anon') && reviewModalState.kvpViewMode === 'perPage';
+    pageIndicator.classList.toggle('visible', showIndicator);
+  }
+
+  // Re-render content for the active tab
+  renderReviewPageContent();
+}
+
+function renderReviewPageThumbnails() {
+  const container = document.querySelector('.review-pages-list');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  for (let i = 1; i <= reviewModalState.totalPages; i++) {
+    const hasError = reviewModalState.errors.some(e => e.page === i);
+
+    const thumb = document.createElement('div');
+    thumb.className = 'review-page-thumb' + (i === reviewModalState.currentPage ? ' active' : '') + (hasError ? ' has-error' : '');
+    thumb.dataset.page = i;
+
+    thumb.innerHTML = `
+      <div class="review-page-placeholder">${i}</div>
+    `;
+
+    thumb.addEventListener('click', () => {
+      reviewModalState.currentPage = i;
+      updateReviewPageNavigation();
+      renderReviewPageContent();
+      highlightCurrentPageThumb();
+    });
+
+    container.appendChild(thumb);
+  }
+
+  // Update page count in header
+  const countEl = document.querySelector('.review-pages-count');
+  if (countEl) countEl.textContent = `(${reviewModalState.totalPages})`;
+}
+
+function highlightCurrentPageThumb() {
+  document.querySelectorAll('.review-page-thumb').forEach(thumb => {
+    thumb.classList.toggle('active', parseInt(thumb.dataset.page) === reviewModalState.currentPage);
+  });
+}
+
+function updateReviewPageNavigation() {
+  const currentEl = document.getElementById('currentPageNum');
+  const totalEl = document.getElementById('totalPageNum');
+  const prevBtn = document.getElementById('reviewPrevPage');
+  const nextBtn = document.getElementById('reviewNextPage');
+
+  if (currentEl) currentEl.textContent = reviewModalState.currentPage;
+  if (totalEl) totalEl.textContent = reviewModalState.totalPages;
+  if (prevBtn) prevBtn.disabled = reviewModalState.currentPage <= 1;
+  if (nextBtn) nextBtn.disabled = reviewModalState.currentPage >= reviewModalState.totalPages;
+}
+
+function renderReviewPageContent() {
+  const page = reviewModalState.currentPage;
+  const tab = reviewModalState.activeTab || 'kvp';
+
+  updateReviewPageNavigation();
+  renderReviewOriginalPreview(page);
+
+  // Render content based on active tab
+  if (tab === 'kvp') {
+    renderReviewKvpContent(page);
+  } else if (tab === 'anon') {
+    renderReviewAnonContent(page);
+  } else if (tab === 'text') {
+    renderReviewTextContent(page);
+  }
+}
+
+function renderReviewOriginalPreview(page) {
+  const img = document.getElementById('reviewPreviewImage');
+  if (!img) return;
+
+  // Get page image URL from mock data (or use placeholder)
+  const pageData = reviewModalState.processedData.pages?.find(p => p.pageNumber === page);
+  const imageUrl = pageData?.imageUrl || 'https://placehold.co/600x800/f5f5f5/999?text=Page+' + page;
+  img.src = imageUrl;
+  img.alt = `Original page ${page}`;
+}
+
+function renderReviewKvpContent(page) {
+  const container = document.querySelector('.review-kvp-list');
+  if (!container) return;
+
+  // Check if KVP extraction was enabled
+  if (!reviewModalState.enabledModes.kvp) {
+    container.innerHTML = `
+      <div class="review-not-processed">
+        <span class="review-not-processed-icon">ℹ</span>
+        <p>Key-value extraction was not selected during processing.</p>
+        <p class="review-not-processed-hint">To extract structured data, reprocess with key-value extraction enabled.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const isAggregated = reviewModalState.kvpViewMode === 'aggregated';
+
+  // Update page indicator number
+  const pageNumEl = document.getElementById('kvpPageNumber');
+  if (pageNumEl) pageNumEl.textContent = page;
+
+  let kvpsToRender;
+
+  if (isAggregated) {
+    // Ensure aggregated data exists
+    if (reviewModalState.aggregatedKvps.length === 0 && reviewModalState.processedData.kvp.length > 0) {
+      aggregateKvps();
+    }
+    kvpsToRender = reviewModalState.aggregatedKvps;
+  } else {
+    // Per-page: filter to current page only
+    kvpsToRender = reviewModalState.processedData.kvp
+      .filter(k => k.page === page)
+      .map(k => ({
+        key: k.key,
+        displayKey: k.key,
+        value: k.value,
+        confidence: k.confidence,
+        pages: [k.page]
+      }));
+  }
+
+  // Handle empty state
+  if (kvpsToRender.length === 0) {
+    container.innerHTML = isAggregated
+      ? '<div class="review-empty-state">No key-value pairs extracted from this document</div>'
+      : `<div class="review-kvp-empty">
+           <span class="review-kvp-empty-text">No extractions on this page</span>
+           <button class="review-kvp-reextract-btn" onclick="reextractCurrentPage()">Re-extract Page</button>
+         </div>`;
+    return;
+  }
+
+  // Apply virtual scroll class if needed
+  container.classList.toggle('virtual-scroll', kvpsToRender.length > 50);
+
+  // Render KVP rows (display only)
+  container.innerHTML = kvpsToRender.map((kvp, idx) => {
+    const pagesLabel = kvp.pages.length > 1 ? `p.${kvp.pages.join(',')}` : `p.${kvp.pages[0]}`;
+
+    return `
+      <div class="review-kvp-row" data-key="${escapeHtml(kvp.key)}" data-idx="${idx}">
+        <span class="review-kvp-label">${escapeHtml(kvp.displayKey.replace(/_/g, ' '))}</span>
+        <span class="review-kvp-value">${escapeHtml(kvp.value)}</span>
+        ${isAggregated ? `<span class="review-kvp-pages">${pagesLabel}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderReviewAnonContent(page) {
+  const container = document.querySelector('.review-kvp-list');
+  if (!container) return;
+
+  // Check if anonymization was enabled
+  if (!reviewModalState.enabledModes.anon) {
+    container.innerHTML = `
+      <div class="review-not-processed">
+        <span class="review-not-processed-icon">ℹ</span>
+        <p>Anonymization was not selected during processing.</p>
+        <p class="review-not-processed-hint">To detect PII, reprocess with anonymization enabled.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const isAggregated = reviewModalState.kvpViewMode === 'aggregated';
+
+  // Update page indicator number
+  const pageNumEl = document.getElementById('kvpPageNumber');
+  if (pageNumEl) pageNumEl.textContent = page;
+
+  let anonToRender;
+
+  if (isAggregated) {
+    // Ensure aggregated data exists
+    if (reviewModalState.aggregatedAnon.length === 0 && reviewModalState.processedData.anon.length > 0) {
+      aggregateAnon();
+    }
+    anonToRender = reviewModalState.aggregatedAnon;
+  } else {
+    // Per-page mode: filter by current page
+    anonToRender = reviewModalState.processedData.anon
+      .filter(a => a.page === page)
+      .map(a => ({
+        entity: a.entity,
+        original: a.original,
+        redacted: a.redacted,
+        confidence: a.confidence || 0,
+        pages: [a.page]
+      }));
+  }
+
+  if (anonToRender.length === 0) {
+    container.innerHTML = isAggregated
+      ? '<div class="review-empty-state">No PII entities detected in this document</div>'
+      : '<div class="review-empty-state">No PII entities detected on this page</div>';
+    return;
+  }
+
+  // Sticky header row (same structure for both aggregated and per-page modes)
+  const headerHtml = `
+    <div class="review-anon-header">
+      <span class="review-anon-entity-type">Entity</span>
+      <span class="review-anon-original">Original</span>
+      <span class="review-anon-redacted">Redacted</span>
+      <span class="review-anon-pages">Page</span>
+    </div>
+  `;
+
+  // Render anonymization entities
+  const rowsHtml = anonToRender.map((item, idx) => {
+    const pagesLabel = item.pages.length > 1 ? `p.${item.pages.join(',')}` : `p.${item.pages[0]}`;
+
+    return `
+      <div class="review-anon-row" data-index="${idx}">
+        <span class="review-anon-entity-type">${item.entity.replace(/_/g, ' ')}</span>
+        <span class="review-anon-original">${escapeHtml(item.original)}</span>
+        <span class="review-anon-redacted">${escapeHtml(item.redacted)}</span>
+        <span class="review-anon-pages">${pagesLabel}</span>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = headerHtml + rowsHtml;
+}
+
+function renderReviewTextContent(page) {
+  const container = document.querySelector('.review-kvp-list');
+  if (!container) return;
+
+  // Check if text extraction was enabled
+  if (!reviewModalState.enabledModes.text) {
+    container.innerHTML = `
+      <div class="review-not-processed">
+        <span class="review-not-processed-icon">ℹ</span>
+        <p>Text extraction was not selected during processing.</p>
+        <p class="review-not-processed-hint">To extract clean text, reprocess with text extraction enabled.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const isAggregated = reviewModalState.kvpViewMode === 'aggregated';
+
+  let content;
+  let isEditable = true;
+
+  if (isAggregated) {
+    // Concatenate all pages with separators
+    content = reviewModalState.processedData.text
+      .slice()
+      .sort((a, b) => a.page - b.page)
+      .map(t => `--- Page ${t.page} ---\n\n${t.content}`)
+      .join('\n\n');
+    isEditable = false; // Aggregated view is read-only
+  } else {
+    // Single page
+    const pageText = reviewModalState.processedData.text.find(t => t.page === page);
+    const editedContent = reviewModalState.edits.text.get(page);
+    content = editedContent !== undefined ? editedContent : (pageText?.content || '');
+  }
+
+  if (!content) {
+    container.innerHTML = isAggregated
+      ? '<div class="review-empty-state">No text content in this document</div>'
+      : '<div class="review-empty-state">No text content for this page</div>';
+    return;
+  }
+
+  const pageText = reviewModalState.processedData.text.find(t => t.page === page);
+
+  container.innerHTML = `
+    <div class="review-text-note">Text extracted in reading order (layout-dependent)${isAggregated ? ' — All pages combined' : ''}</div>
+    <textarea class="review-text-area${isAggregated ? ' aggregated' : ''}" ${isAggregated ? 'data-aggregated="true" readonly' : `data-page="${page}" data-original="${escapeHtml(pageText?.content || '')}"`}>${escapeHtml(content)}</textarea>
+  `;
+
+  // Add edit listener (only for per-page mode)
+  if (!isAggregated) {
+    const textarea = container.querySelector('.review-text-area');
+    textarea?.addEventListener('input', (e) => {
+      const pageNum = parseInt(e.target.dataset.page);
+      const newContent = e.target.value;
+      const originalContent = e.target.dataset.original;
+
+      if (newContent !== originalContent) {
+        reviewModalState.edits.text.set(pageNum, newContent);
+        reviewModalState.hasUnsavedChanges = true;
+      } else {
+        reviewModalState.edits.text.delete(pageNum);
+        reviewModalState.hasUnsavedChanges = reviewModalState.edits.kvp.size > 0 ||
+                                              reviewModalState.edits.anon.size > 0 ||
+                                              reviewModalState.edits.text.size > 0;
+      }
+      updateReviewSaveButton();
+    });
+  }
+}
+
+function renderReviewMetadata() {
+  const fileNameEl = document.getElementById('reviewFileName');
+  const pagesEl = document.getElementById('reviewMetaPages');
+  const dateEl = document.getElementById('reviewMetaDate');
+
+  if (fileNameEl) fileNameEl.textContent = reviewModalState.fileName || 'document.pdf';
+  if (pagesEl) pagesEl.textContent = reviewModalState.totalPages;
+  if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function updateReviewSaveButton() {
+  const saveBtn = document.getElementById('reviewSave');
+  if (saveBtn) {
+    saveBtn.disabled = !reviewModalState.hasUnsavedChanges;
+  }
+}
+
+async function handleReviewSave() {
+  // TODO: Implement actual save to API
+  // const payload = {
+  //   fileId: reviewModalState.fileId,
+  //   edits: {
+  //     kvp: Object.fromEntries(reviewModalState.edits.kvp),
+  //     anon: Object.fromEntries(reviewModalState.edits.anon),
+  //     text: Object.fromEntries(reviewModalState.edits.text)
+  //   }
+  // };
+  // await fetch(`/api/tasks/${fileId}/update`, { method: 'POST', body: JSON.stringify(payload) });
+
+  console.log('Saving changes:', {
+    kvp: Object.fromEntries(reviewModalState.edits.kvp),
+    anon: Object.fromEntries(reviewModalState.edits.anon),
+    text: Object.fromEntries(reviewModalState.edits.text)
+  });
+
+  // Reset edit state
+  reviewModalState.edits = { kvp: new Map(), anon: new Map(), text: new Map() };
+  reviewModalState.hasUnsavedChanges = false;
+  updateReviewSaveButton();
+
+  // Show success feedback
+  const saveBtn = document.getElementById('reviewSave');
+  if (saveBtn) {
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saved!';
+    saveBtn.classList.add('success');
+    setTimeout(() => {
+      saveBtn.textContent = originalText;
+      saveBtn.classList.remove('success');
+    }, 2000);
+  }
+}
+
+function toggleReprocessOptions() {
+  const optionsDiv = document.getElementById('reviewReprocessOptions');
+  if (!optionsDiv) return;
+
+  const isVisible = optionsDiv.style.display !== 'none';
+  optionsDiv.style.display = isVisible ? 'none' : 'block';
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ==========================================
