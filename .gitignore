@@ -141,6 +141,9 @@ settings.local.json
 # *_IMPLEMENTATION.md
 # *_AUDIT*.md
 
+# Partner documentation (private)
+PARTNER_SETUP_GUIDE.md
+
 # Output and temporary files
 output/
 pids/

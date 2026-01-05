@@ -9,8 +9,6 @@
   <link rel="stylesheet" href="style.css?v=94">
   <link rel="stylesheet" href="kvp-modal.css?v=9">
   <link rel="stylesheet" href="kvp-results-modal.css?v=6">
-  <link rel="stylesheet" href="anon-modal.css?v=1">
-  <link rel="stylesheet" href="anon-results-modal.css?v=1">
 </head>
 <body>
 
@@ -500,10 +498,6 @@
           <span class="kvp-tab-icon">📊</span>
           KEY-VALUE PAIR EXTRACTION
         </button>
-        <button class="kvp-tab" data-tab="anonymization" id="anonTabBtn">
-          <span class="kvp-tab-icon">🔒</span>
-          ANONYMIZATION
-        </button>
         <button class="kvp-tab" data-tab="text" disabled>
           <span class="kvp-tab-icon">📝</span>
           EXTRACT CLEAN TEXT
@@ -616,112 +610,6 @@
         </div>
       </div>
 
-      <!-- Anonymization Tab -->
-      <div class="kvp-tab-content" id="anonymizationTab">
-        <div class="kvp-grid">
-          <!-- Left Side: File Selection -->
-          <div class="kvp-files-section">
-            <h3 class="kvp-section-title">FILES (<span id="anonFileCount">0</span>)</h3>
-            <div class="kvp-file-list" id="anonFileList">
-              <label class="kvp-file-item">
-                <input type="checkbox" class="kvp-file-checkbox" checked>
-                <span class="kvp-file-name">No files selected</span>
-              </label>
-            </div>
-            <button class="kvp-select-all-btn" id="anonSelectAllFiles">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 11l3 3L22 4"></path>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-              </svg>
-              Select all
-            </button>
-          </div>
-
-          <!-- Right Side: Anonymization Config -->
-          <div class="kvp-config-section">
-            <!-- Enable Anonymization Toggle -->
-            <div class="kvp-form-group">
-              <label class="kvp-toggle-label">
-                <span class="kvp-toggle-text">
-                  <strong>ENABLE ANONYMIZATION</strong>
-                  <small>Replace PII with synthetic data</small>
-                </span>
-                <div class="toggle-switch">
-                  <input type="checkbox" id="anonEnableToggle" class="toggle-input" checked>
-                  <span class="toggle-slider"></span>
-                </div>
-              </label>
-            </div>
-
-            <!-- Category Selection -->
-            <div class="kvp-form-group">
-              <label class="kvp-label">CATEGORY</label>
-              <select class="kvp-select" id="anonCategorySelect">
-                <option value="">Select category...</option>
-              </select>
-              <div class="kvp-selected-sectors" id="anonSelectedCategories"></div>
-            </div>
-
-            <!-- Preset Selection -->
-            <div class="kvp-form-group">
-              <label class="kvp-label">PRESET</label>
-              <select class="kvp-select" id="anonPresetSelect">
-                <option value="">Select preset...</option>
-              </select>
-            </div>
-
-            <!-- Active Preset Card -->
-            <div id="anonActivePresetCard" style="display: none;"></div>
-
-            <!-- Custom Entity Addition -->
-            <div class="kvp-form-group">
-              <div class="kvp-custom-field-input">
-                <input
-                  type="text"
-                  class="kvp-input"
-                  id="anonCustomEntity"
-                  placeholder="Add custom entity..."
-                >
-                <button class="kvp-add-btn" id="anonAddCustomEntityBtn">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- Preset Name (for saving) -->
-            <div class="kvp-form-group" id="anonPresetNameGroup" style="display: none;">
-              <div class="kvp-preset-name-input">
-                <input
-                  type="text"
-                  class="kvp-input"
-                  id="anonPresetName"
-                  placeholder="Preset name..."
-                >
-                <button type="button" class="kvp-save-preset-btn" id="anonSavePresetBtn">Save</button>
-              </div>
-            </div>
-
-            <!-- Entity Selection List -->
-            <div class="kvp-selection-section">
-              <h3 class="kvp-section-subtitle">ENTITIES TO ANONYMIZE</h3>
-
-              <!-- Select All Checkbox -->
-              <label class="kvp-select-all-label">
-                <input type="checkbox" id="anonSelectAllEntities" class="kvp-checkbox">
-                <span>Select All</span>
-              </label>
-
-              <!-- Entity List Container -->
-              <div class="kvp-list" id="anonEntityList">
-                <p class="kvp-empty-message">Select a category or preset to see available entities</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Text Tab (placeholder) -->
       <div class="kvp-tab-content" id="textTab">
         <p>Clean text extraction coming soon...</p>
@@ -736,163 +624,12 @@
 
   </div>
 
-  <!-- Anonymization Modal -->
-  <div class="modal-overlay" id="anonModal">
-    <div class="anon-modal-container">
-      <button class="modal-close" id="closeAnonModal">×</button>
-
-      <!-- Modal Header -->
-      <div class="anon-modal-header">
-        <div class="anon-modal-title-group">
-          <span class="anon-modal-icon">🔒</span>
-          <h2 class="anon-modal-title">PII Anonymization</h2>
-        </div>
-        <p class="anon-modal-subtitle">Extract and anonymize sensitive information from documents</p>
-      </div>
-
-      <!-- Modal Body (Grid Layout) -->
-      <div class="anon-modal-body">
-
-        <!-- Left Sidebar: File Selection -->
-        <aside class="anon-sidebar">
-          <div class="anon-sidebar-header">
-            <h3 class="anon-sidebar-title">FILES (<span id="anonFileCount">0</span>)</h3>
-            <button class="anon-select-all-files-btn" id="anonSelectAllFiles">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 11l3 3L22 4"></path>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-              </svg>
-              Select all
-            </button>
-          </div>
-          <div class="anon-file-list" id="anonFileList">
-            <div class="anon-file-empty">No files selected</div>
-          </div>
-        </aside>
-
-        <!-- Main Content Area -->
-        <main class="anon-main-content">
-
-          <!-- Strategy Selection -->
-          <section class="anon-section">
-            <div class="anon-section-header">
-              <h3 class="anon-section-title">ANONYMIZATION STRATEGY</h3>
-              <span class="anon-section-badge">Required</span>
-            </div>
-            <div class="anon-strategy-grid" id="anonStrategyGrid">
-              <!-- Strategy cards will be rendered here -->
-            </div>
-          </section>
-
-          <!-- Audit Trail Toggle -->
-          <section class="anon-section anon-section-compact">
-            <label class="anon-audit-toggle">
-              <div class="anon-audit-info">
-                <span class="anon-audit-label">Generate Audit Trail</span>
-                <span class="anon-audit-description">HIPAA/GDPR compliance logging</span>
-              </div>
-              <div class="toggle-switch">
-                <input type="checkbox" id="anonGenerateAudit" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </div>
-            </label>
-          </section>
-
-          <!-- Sector Selection -->
-          <section class="anon-section">
-            <div class="anon-section-header">
-              <h3 class="anon-section-title">PII SECTORS</h3>
-              <span class="anon-section-badge">Optional</span>
-            </div>
-            <div class="anon-sector-select-wrapper">
-              <select class="anon-select" id="anonSectorSelect">
-                <option value="">Select sectors to extract specific fields...</option>
-              </select>
-              <div class="anon-selected-sectors" id="anonSelectedSectors"></div>
-            </div>
-          </section>
-
-          <!-- Field Selection -->
-          <section class="anon-section" id="anonFieldSelectionSection" style="display: none;">
-            <div class="anon-section-header">
-              <h3 class="anon-section-title">FIELDS TO EXTRACT</h3>
-              <label class="anon-select-all-fields">
-                <input type="checkbox" id="anonSelectAllFields" class="anon-checkbox">
-                <span>Select All</span>
-              </label>
-            </div>
-            <div class="anon-field-grid" id="anonFieldGrid">
-              <!-- Field cards will be rendered here -->
-            </div>
-          </section>
-
-          <!-- Preset Controls -->
-          <section class="anon-section">
-            <div class="anon-section-header">
-              <h3 class="anon-section-title">PRESETS</h3>
-            </div>
-
-            <!-- Preset Dropdown -->
-            <div class="anon-form-group">
-              <select class="anon-select" id="anonPresetSelect">
-                <option value="">Load preset...</option>
-              </select>
-            </div>
-
-            <!-- Active Preset Card -->
-            <div id="anonActivePresetCard" style="display: none;"></div>
-
-            <!-- Save Preset Section -->
-            <div class="anon-preset-save-section" id="anonPresetSaveSection" style="display: none;">
-              <div class="anon-preset-name-input">
-                <input
-                  type="text"
-                  class="anon-input"
-                  id="anonPresetName"
-                  placeholder="Preset name..."
-                >
-                <button type="button" class="anon-save-preset-btn" id="anonSavePresetBtn">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                  Save Preset
-                </button>
-              </div>
-            </div>
-
-          </section>
-
-        </main>
-
-      </div>
-
-      <!-- Modal Footer -->
-      <footer class="anon-modal-footer">
-        <button class="btn-modal-cancel" id="anonCancelBtn">Cancel</button>
-        <button class="btn-modal-confirm" id="anonProcessBtn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-            <path d="M2 17l10 5 10-5"></path>
-            <path d="M2 12l10 5 10-5"></path>
-          </svg>
-          Anonymize <span id="anonProcessCount"></span> Files
-        </button>
-      </footer>
-
-    </div>
-  </div>
-
   </div> <!-- End .app-wrapper -->
 
   <script src="https://js.stripe.com/v3/"></script>
   <script src="sidebar-nav.js?v=15"></script>
   <script src="kvp-modal.js?v=44"></script>
   <script src="kvp-results-modal.js?v=19"></script>
-  <!-- anon-modal.js disabled - anon functionality now integrated into KVP modal as a tab -->
-  <!-- <script src="anon-modal.js?v=1"></script> -->
-  <script src="anon-results-modal.js?v=1"></script>
   <script src="app.js?v=59"></script>
   <script src="credits.js"></script>
   <script>

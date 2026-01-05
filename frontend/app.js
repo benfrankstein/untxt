@@ -2167,9 +2167,9 @@ async function uploadFileWithKVP(file, kvps) {
 // Expose globally for kvp-modal.js
 window.uploadFileWithKVP = uploadFileWithKVP;
 
-// Unified processing function that handles both KVP and/or Anon
+// Unified processing function that handles KVP
 async function uploadFileWithProcessing(file, options) {
-  const { kvpEnabled, anonEnabled, kvps, anonEntities, anonSectors } = options;
+  const { kvpEnabled, kvps } = options;
 
   // Check credits before upload
   const hasCredits = await checkCreditsBeforeUpload();
@@ -2185,27 +2185,16 @@ async function uploadFileWithProcessing(file, options) {
     // Set formatType based on what's enabled
     let formatTypes = [];
     if (kvpEnabled) formatTypes.push('kvp');
-    if (anonEnabled) formatTypes.push('anon');
-    formData.append('formatType', formatTypes.join(',')); // e.g., "kvp,anon" or just "kvp" or "anon"
+    formData.append('formatType', formatTypes.join(','));
 
     // Add KVP data if enabled
     if (kvpEnabled && kvps && kvps.length > 0) {
       formData.append('selectedKvps', JSON.stringify(kvps));
     }
 
-    // Add Anon data if enabled
-    if (anonEnabled && anonEntities && anonEntities.length > 0) {
-      formData.append('selectedEntities', JSON.stringify(anonEntities));
-      if (anonSectors && anonSectors.length > 0) {
-        formData.append('selectedSectors', JSON.stringify(anonSectors));
-      }
-    }
-
     console.log(`📤 Uploading ${file.name} with:`, {
       kvpEnabled,
-      anonEnabled,
-      kvps: kvps?.length || 0,
-      entities: anonEntities?.length || 0
+      kvps: kvps?.length || 0
     });
 
     const response = await fetch(`${API_URL}/api/tasks`, {
@@ -2256,12 +2245,8 @@ async function uploadFileWithProcessing(file, options) {
 
       // Create notification message based on what's enabled
       let message = `Processing ${file.name}`;
-      if (kvpEnabled && anonEnabled) {
-        message += ' with KVP extraction and anonymization';
-      } else if (kvpEnabled) {
+      if (kvpEnabled) {
         message += ' with KVP extraction';
-      } else if (anonEnabled) {
-        message += ' with anonymization';
       }
       showNotification(message, 'success');
 
