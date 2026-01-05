@@ -325,6 +325,172 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
   }
 });
 
+// ============================================
+// FORGOT PASSWORD MODAL
+// ============================================
+
+const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+const closeForgotPasswordModal = document.getElementById('closeForgotPasswordModal');
+const cancelForgotPasswordButton = document.getElementById('cancelForgotPasswordButton');
+const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+const forgotPasswordAlert = document.getElementById('forgotPasswordAlert');
+
+// Open modal
+forgotPasswordLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  forgotPasswordModal.classList.add('visible');
+  document.getElementById('forgotPasswordEmail').value = '';
+  clearFieldError('forgotPasswordEmail');
+  forgotPasswordAlert.classList.remove('visible');
+
+  // Reset button state
+  const button = document.getElementById('forgotPasswordButton');
+  button.disabled = false;
+  button.textContent = 'Send Reset Link';
+});
+
+// Close modal
+function closeForgotPasswordModalHandler() {
+  forgotPasswordModal.classList.remove('visible');
+  forgotPasswordForm.reset();
+  clearFieldError('forgotPasswordEmail');
+  forgotPasswordAlert.classList.remove('visible');
+
+  // Reset button state
+  const button = document.getElementById('forgotPasswordButton');
+  button.disabled = false;
+  button.textContent = 'Send Reset Link';
+}
+
+closeForgotPasswordModal.addEventListener('click', closeForgotPasswordModalHandler);
+cancelForgotPasswordButton.addEventListener('click', closeForgotPasswordModalHandler);
+
+// Close modal when clicking outside
+forgotPasswordModal.addEventListener('click', (e) => {
+  if (e.target === forgotPasswordModal) {
+    closeForgotPasswordModalHandler();
+  }
+});
+
+// Show modal alert
+function showForgotPasswordAlert(message, type = 'success') {
+  forgotPasswordAlert.textContent = message;
+  forgotPasswordAlert.className = `alert ${type} visible`;
+}
+
+// Forgot password form submission
+forgotPasswordForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById('forgotPasswordEmail').value.trim();
+  const button = document.getElementById('forgotPasswordButton');
+
+  // Clear previous errors
+  clearFieldError('forgotPasswordEmail');
+  forgotPasswordAlert.classList.remove('visible');
+
+  // Validate email
+  if (!email) {
+    showFieldError('forgotPasswordEmail', 'Email is required');
+    return;
+  }
+
+  const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+  if (!emailRegex.test(email)) {
+    showFieldError('forgotPasswordEmail', 'Please enter a valid email address');
+    return;
+  }
+
+  // Disable button and show loading state
+  button.disabled = true;
+  button.textContent = 'Checking...';
+
+  try {
+    // First, check if this is a Google account
+    const checkResponse = await fetch(`${API_URL}/api/auth/check-email?email=${encodeURIComponent(email)}`);
+    const checkData = await checkResponse.json();
+
+    if (checkData.success && checkData.data.exists && checkData.data.authProvider === 'google') {
+      // This is a Google account
+      showForgotPasswordAlert(
+        'This account uses Google Sign-In. To reset your password, please visit your Google Account settings at myaccount.google.com.',
+        'error'
+      );
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+      return;
+    }
+
+    // Continue with password reset for local accounts
+    button.textContent = 'Sending...';
+
+    const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await response.json();
+
+    if (response.status === 429) {
+      // Rate limited
+      showForgotPasswordAlert(data.error || 'Too many requests. Please try again later.', 'error');
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+      return;
+    }
+
+    if (response.status === 404) {
+      // Email not found
+      showForgotPasswordAlert(data.error || 'No account found with that email address.', 'error');
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+      return;
+    }
+
+    if (response.status === 500) {
+      // Server error (email sending failed)
+      showForgotPasswordAlert(data.error || 'Failed to send email. Please try again.', 'error');
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+      return;
+    }
+
+    if (data.success) {
+      // Email sent successfully
+      showForgotPasswordAlert(data.message, 'success');
+
+      // Reset button state
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+
+      // Clear form
+      forgotPasswordForm.reset();
+
+      // Close modal after 3 seconds
+      setTimeout(() => {
+        closeForgotPasswordModalHandler();
+      }, 3000);
+    } else {
+      showForgotPasswordAlert(data.error || 'An error occurred. Please try again.', 'error');
+      button.disabled = false;
+      button.textContent = 'Send Reset Link';
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    showForgotPasswordAlert('Network error. Please try again.', 'error');
+    button.disabled = false;
+    button.textContent = 'Send Reset Link';
+  }
+});
+
+// ============================================
+// CHECK AUTH
+// ============================================
+
 // Check if user is already logged in
 async function checkAuth() {
   try {

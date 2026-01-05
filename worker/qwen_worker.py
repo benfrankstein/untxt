@@ -17,7 +17,7 @@ from redis_client import RedisClient
 from db_client import DatabaseClient
 from s3_client import S3Client
 from model_loader import load_qwen_model
-from page_processor import process_html_page, process_json_page
+from page_processor import process_html_page, process_json_page, process_kvp_page, process_anon_page
 
 logging.basicConfig(
     level=logging.INFO,
@@ -165,6 +165,103 @@ class QwenWorker:
                 )
                 # Upload JSON to S3
                 result_s3_key = self._upload_result(result, task_data)
+
+            elif format_type == 'kvp':
+                # Get selected KVPs from task_data (if user specified custom selection)
+                selected_kvps = task_data.get('selected_kvps', None)
+
+                result = process_kvp_page(
+                    self.model,
+                    self.processor,
+                    self.config,
+                    temp_image_path,
+                    page_number,
+                    selected_kvps
+                )
+
+                # Upload both KVP JSON and HTML to S3
+                # First upload structured JSON
+                json_result = {
+                    'kvp_output': result['kvp_output'],
+                    'page_number': page_number,
+                    'format_type': 'kvp_json',
+                    'processing_time_ms': result['processing_time_ms']
+                }
+                kvp_json_s3_key = self._upload_result(json_result, task_data)
+
+                # Then upload HTML for viewing (primary result)
+                html_result = {
+                    'html_output': result['html_output'],
+                    'page_number': page_number,
+                    'format_type': 'kvp',
+                    'processing_time_ms': result['processing_time_ms']
+                }
+                result_s3_key = self._upload_result(html_result, task_data)
+
+                logger.info(f"[Worker {self.worker_id}] ✓ Uploaded KVP HTML: {result_s3_key}")
+                logger.info(f"[Worker {self.worker_id}] ✓ Uploaded KVP JSON: {kvp_json_s3_key}")
+
+            elif format_type == 'anon':
+                # Get anonymization parameters from task_data
+                anon_strategy = task_data.get('anon_strategy', 'synthetic')
+                anon_generate_audit = task_data.get('anon_generate_audit', False)
+                anon_selected_fields = task_data.get('anon_selected_fields', None)
+
+                result = process_anon_page(
+                    self.model,
+                    self.processor,
+                    self.config,
+                    temp_image_path,
+                    page_number,
+                    anon_strategy,
+                    anon_generate_audit,
+                    anon_selected_fields
+                )
+
+                # Upload all anon outputs to S3
+                # 1. Anonymized JSON
+                anon_json_result = {
+                    'anon_json': result['anon_json'],
+                    'page_number': page_number,
+                    'format_type': 'anon_json'
+                }
+                anon_json_s3_key = self._upload_result(anon_json_result, task_data)
+
+                # 2. Tokenized TXT
+                anon_txt_result = {
+                    'anon_txt': result['anon_txt'],
+                    'page_number': page_number,
+                    'format_type': 'anon_txt'
+                }
+                anon_txt_s3_key = self._upload_result(anon_txt_result, task_data)
+
+                # 3. Mapping file
+                anon_mapping_result = {
+                    'anon_mapping': result['anon_mapping'],
+                    'page_number': page_number,
+                    'format_type': 'anon_mapping'
+                }
+                anon_mapping_s3_key = self._upload_result(anon_mapping_result, task_data)
+
+                # 4. Audit trail (optional)
+                anon_audit_s3_key = None
+                if result.get('anon_audit'):
+                    anon_audit_result = {
+                        'anon_audit': result['anon_audit'],
+                        'page_number': page_number,
+                        'format_type': 'anon_audit'
+                    }
+                    anon_audit_s3_key = self._upload_result(anon_audit_result, task_data)
+
+                # Primary result is the JSON
+                result_s3_key = anon_json_s3_key
+
+                logger.info(f"[Worker {self.worker_id}] ✓ Uploaded Anon JSON: {anon_json_s3_key}")
+                logger.info(f"[Worker {self.worker_id}] ✓ Uploaded Anon TXT: {anon_txt_s3_key}")
+                logger.info(f"[Worker {self.worker_id}] ✓ Uploaded Anon Mapping: {anon_mapping_s3_key}")
+                if anon_audit_s3_key:
+                    logger.info(f"[Worker {self.worker_id}] ✓ Uploaded Anon Audit: {anon_audit_s3_key}")
+
             else:
                 raise ValueError(f"Unknown format type: {format_type}")
 
@@ -172,15 +269,32 @@ class QwenWorker:
             processing_time_ms = int((time.time() - processing_start_time) * 1000)
 
             # Update task_pages status to completed (HIPAA compliance)
-            self.db_client.update_task_page_status(
-                task_id,
-                page_number,
-                format_type,  # Pass format_type to identify correct record
-                'completed',
-                worker_id=self.worker_id,
-                result_s3_key=result_s3_key,
-                processing_time_ms=processing_time_ms
-            )
+            # For KVP format, also store the JSON S3 key
+            update_params = {
+                'task_id': task_id,
+                'page_number': page_number,
+                'format_type': format_type,
+                'status': 'completed',
+                'worker_id': self.worker_id,
+                'result_s3_key': result_s3_key,
+                'processing_time_ms': processing_time_ms
+            }
+
+            # Add JSON key for KVP extractions
+            if format_type == 'kvp' and 'kvp_json_s3_key' in locals():
+                update_params['json_result_s3_key'] = kvp_json_s3_key
+
+            # Add anon S3 keys for anonymization
+            if format_type == 'anon':
+                update_params['anon_json_s3_key'] = anon_json_s3_key
+                update_params['anon_txt_s3_key'] = anon_txt_s3_key
+                update_params['anon_mapping_s3_key'] = anon_mapping_s3_key
+                if anon_audit_s3_key:
+                    update_params['anon_audit_s3_key'] = anon_audit_s3_key
+                update_params['anon_strategy'] = anon_strategy
+                update_params['anon_generate_audit'] = anon_generate_audit
+
+            self.db_client.update_task_page_status(**update_params)
 
             # Update database with page result (for results table)
             self._update_page_result(task_data, result_s3_key, result)
@@ -240,7 +354,13 @@ class QwenWorker:
         extension_map = {
             'html': 'html',
             'json': 'json',
-            'txt': 'txt'
+            'txt': 'txt',
+            'kvp': 'html',          # KVP HTML output
+            'kvp_json': 'json',     # KVP structured JSON
+            'anon_json': 'json',    # Anonymized JSON
+            'anon_txt': 'txt',      # Tokenized text
+            'anon_mapping': 'json', # Token mapping
+            'anon_audit': 'json'    # Audit trail
         }
         extension = extension_map.get(format_type, 'txt')
         filename = f"page_{page_number}_{format_type}_{timestamp}.{extension}"
@@ -258,6 +378,34 @@ class QwenWorker:
         elif format_type == 'txt':
             content = result['text_output']
             content_type = 'text/plain'
+        elif format_type == 'kvp':
+            # KVP HTML output for viewing
+            content = result['html_output']
+            content_type = 'text/html'
+        elif format_type == 'kvp_json':
+            # KVP structured JSON
+            import json
+            content = json.dumps(result['kvp_output'], indent=2, ensure_ascii=False)
+            content_type = 'application/json'
+        elif format_type == 'anon_json':
+            # Anonymized JSON
+            import json
+            content = json.dumps(result['anon_json'], indent=2, ensure_ascii=False)
+            content_type = 'application/json'
+        elif format_type == 'anon_txt':
+            # Tokenized text output
+            content = result['anon_txt']
+            content_type = 'text/plain'
+        elif format_type == 'anon_mapping':
+            # Token mapping JSON
+            import json
+            content = json.dumps(result['anon_mapping'], indent=2, ensure_ascii=False)
+            content_type = 'application/json'
+        elif format_type == 'anon_audit':
+            # Audit trail JSON
+            import json
+            content = json.dumps(result['anon_audit'], indent=2, ensure_ascii=False)
+            content_type = 'application/json'
         else:  # json
             import json
             # Check if JSON parsing failed
@@ -306,8 +454,8 @@ class QwenWorker:
         task_id = task_data.get('parent_task_id') or task_data.get('task_id')  # Use parent UUID, not compound ID
         format_type = result.get('format_type')
 
-        # Update tasks.s3_result_key with HTML (primary format) for fast preview access
-        if format_type == 'html':
+        # Update tasks.s3_result_key with HTML or KVP (primary formats) for fast preview access
+        if format_type in ('html', 'kvp'):
             self.db_client.update_task_result_key(task_id, result_s3_key)
             logger.info(f"[Worker {self.worker_id}] ✓ Set primary result key: {result_s3_key}")
 
@@ -315,7 +463,7 @@ class QwenWorker:
         # The backend will update overall task status based on task_pages completion
 
         # Results are already stored in S3 via task_pages table
-        # Alternative formats (JSON, TXT) are queried from task_pages
+        # Alternative formats (JSON, TXT, KVP_JSON) are queried from task_pages
 
     def _update_task_status(self, task_id: str, user_id: str, status: str, message: str):
         """Update task status and publish to WebSocket"""

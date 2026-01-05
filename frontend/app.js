@@ -205,11 +205,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       console.log('Task fetched:', task);
       console.log('Task ID:', task.id);
+      console.log('Task pages:', task.pages);
+
+      // Check if this is a KVP extraction task
+      const hasKVPPages = task.pages && task.pages.some(p => p.format_type === 'kvp');
+      console.log('Has KVP pages:', hasKVPPages);
+
+      if (hasKVPPages) {
+        // Open KVP results modal for KVP tasks
+        console.log('✓ Opening KVP results modal for task:', taskId);
+        if (typeof KVPResultsModal !== 'undefined') {
+          KVPResultsModal.open(taskId);
+        } else {
+          console.error('KVPResultsModal is not defined - check if kvp-results-modal.js is loaded');
+          showToast('Failed to open KVP results modal', 'error');
+        }
+        return;
+      }
+
+      // Check if this is an Anonymization task
+      const hasAnonPages = task.pages && task.pages.some(p => p.format_type === 'anon');
+      console.log('Has Anon pages:', hasAnonPages);
+
+      if (hasAnonPages) {
+        // Open Anon results modal for Anon tasks
+        console.log('✓ Opening Anon results modal for task:', taskId);
+        if (typeof AnonResultsModal !== 'undefined') {
+          AnonResultsModal.open(taskId, task);
+        } else {
+          console.error('AnonResultsModal is not defined - check if anon-results-modal.js is loaded');
+          showToast('Failed to open Anon results modal', 'error');
+        }
+        return;
+      }
 
       // Set as current task
       currentTask = task;
 
-      // Show inline viewer for this row
+      // Show inline viewer for this row (for non-KVP tasks)
       await showInlineViewer(row, task);
 
     } catch (error) {
@@ -946,6 +979,20 @@ function showProcessingCard(task) {
 }
 
 function showResultsCard(task) {
+  // Check if this is a KVP extraction task
+  const hasKVPPages = task.pages && task.pages.some(p => p.format_type === 'kvp');
+
+  if (hasKVPPages) {
+    // For KVP tasks, just hide processing and show success message
+    // Modal will open when user clicks View button
+    console.log('✓ KVP extraction completed - ready to view');
+    document.getElementById('processingStatus').style.display = 'none';
+    document.getElementById('resultsCard').style.display = 'none';
+    document.getElementById('errorCard').style.display = 'none';
+    return;
+  }
+
+  // Regular results display for non-KVP tasks
   document.getElementById('processingStatus').style.display = 'none';
   document.getElementById('resultsCard').style.display = 'block';
   document.getElementById('errorCard').style.display = 'none';
@@ -1836,7 +1883,9 @@ function initUpload() {
 
   fileInput.addEventListener('change', (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      showFormatModal(e.target.files);
+      // Convert FileList to array of file objects with name property
+      const files = Array.from(e.target.files);
+      openKVPModal(files);
     }
   });
 
@@ -1857,7 +1906,9 @@ function initUpload() {
       uploadZone.classList.remove('dragging');
 
       if (e.dataTransfer.files.length > 0) {
-        showFormatModal(e.dataTransfer.files);
+        // Convert FileList to array of file objects with name property
+        const files = Array.from(e.dataTransfer.files);
+        openKVPModal(files);
       }
     });
   }
@@ -2037,6 +2088,196 @@ function showInsufficientCreditsModal(balance) {
   };
   document.addEventListener('keydown', escHandler);
 }
+
+// Upload file with KVP extraction (called from kvp-modal.js)
+async function uploadFileWithKVP(file, kvps) {
+  // Check credits before upload
+  const hasCredits = await checkCreditsBeforeUpload();
+  if (!hasCredits) {
+    return; // Stop upload if insufficient credits
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('userId', USER_ID);
+    formData.append('formatType', 'kvp'); // Request KVP extraction
+    formData.append('selectedKvps', JSON.stringify(kvps)); // Pass selected KVPs
+
+    console.log(`📤 Uploading ${file.name} for KVP extraction with ${kvps.length} fields`);
+
+    const response = await fetch(`${API_URL}/api/tasks`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      const taskId = data.data.taskId;
+      console.log(`✓ Task created: ${taskId}`);
+
+      // Update credit balance if provided in response
+      if (data.data.creditsRemaining !== null && data.data.creditsRemaining !== undefined) {
+        console.log(`✓ Credits deducted. Remaining balance: ${data.data.creditsRemaining}`);
+        // Refresh sidebar credits display
+        if (typeof SidebarNav !== 'undefined') {
+          SidebarNav.loadCredits();
+        }
+      }
+
+      // If a folder is selected (not "All Documents"), move the task to that folder
+      if (currentFolderId && currentFolderId !== 'all') {
+        console.log(`📁 Moving task ${taskId} to folder ${currentFolderId}`);
+        try {
+          const folderResponse = await fetch(`${API_URL}/api/folders/${currentFolderId}/tasks/${taskId}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const folderData = await folderResponse.json();
+
+          if (folderData.success) {
+            console.log(`✓ Task added to folder: ${folders.find(f => f.id === currentFolderId)?.name}`);
+          }
+        } catch (error) {
+          console.error('Failed to add task to folder:', error);
+        }
+      }
+
+      // Reload tasks
+      await loadTasks();
+      showNotification(`Processing ${file.name} with KVP extraction`, 'success');
+
+    } else {
+      console.error('Upload failed:', data.error);
+      showNotification('Upload failed: ' + data.error, 'error');
+    }
+
+  } catch (error) {
+    console.error('Upload failed:', error);
+    showNotification('Upload failed: ' + error.message, 'error');
+  }
+}
+
+// Expose globally for kvp-modal.js
+window.uploadFileWithKVP = uploadFileWithKVP;
+
+// Unified processing function that handles both KVP and/or Anon
+async function uploadFileWithProcessing(file, options) {
+  const { kvpEnabled, anonEnabled, kvps, anonEntities, anonSectors } = options;
+
+  // Check credits before upload
+  const hasCredits = await checkCreditsBeforeUpload();
+  if (!hasCredits) {
+    return; // Stop upload if insufficient credits
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('userId', USER_ID);
+
+    // Set formatType based on what's enabled
+    let formatTypes = [];
+    if (kvpEnabled) formatTypes.push('kvp');
+    if (anonEnabled) formatTypes.push('anon');
+    formData.append('formatType', formatTypes.join(',')); // e.g., "kvp,anon" or just "kvp" or "anon"
+
+    // Add KVP data if enabled
+    if (kvpEnabled && kvps && kvps.length > 0) {
+      formData.append('selectedKvps', JSON.stringify(kvps));
+    }
+
+    // Add Anon data if enabled
+    if (anonEnabled && anonEntities && anonEntities.length > 0) {
+      formData.append('selectedEntities', JSON.stringify(anonEntities));
+      if (anonSectors && anonSectors.length > 0) {
+        formData.append('selectedSectors', JSON.stringify(anonSectors));
+      }
+    }
+
+    console.log(`📤 Uploading ${file.name} with:`, {
+      kvpEnabled,
+      anonEnabled,
+      kvps: kvps?.length || 0,
+      entities: anonEntities?.length || 0
+    });
+
+    const response = await fetch(`${API_URL}/api/tasks`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      const taskId = data.data.taskId;
+      console.log(`✓ Task created: ${taskId}`);
+
+      // Update credit balance if provided in response
+      if (data.data.creditsRemaining !== null && data.data.creditsRemaining !== undefined) {
+        console.log(`✓ Credits deducted. Remaining balance: ${data.data.creditsRemaining}`);
+        // Refresh sidebar credits display
+        if (typeof SidebarNav !== 'undefined') {
+          SidebarNav.loadCredits();
+        }
+      }
+
+      // If a folder is selected (not "All Documents"), move the task to that folder
+      if (currentFolderId && currentFolderId !== 'all') {
+        console.log(`📁 Moving task ${taskId} to folder ${currentFolderId}`);
+        try {
+          const folderResponse = await fetch(`${API_URL}/api/folders/${currentFolderId}/tasks/${taskId}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const folderData = await folderResponse.json();
+
+          if (folderData.success) {
+            console.log(`✓ Task added to folder: ${folders.find(f => f.id === currentFolderId)?.name}`);
+          }
+        } catch (error) {
+          console.error('Failed to add task to folder:', error);
+        }
+      }
+
+      // Reload tasks
+      await loadTasks();
+
+      // Create notification message based on what's enabled
+      let message = `Processing ${file.name}`;
+      if (kvpEnabled && anonEnabled) {
+        message += ' with KVP extraction and anonymization';
+      } else if (kvpEnabled) {
+        message += ' with KVP extraction';
+      } else if (anonEnabled) {
+        message += ' with anonymization';
+      }
+      showNotification(message, 'success');
+
+    } else {
+      console.error('Upload failed:', data.error);
+      showNotification('Upload failed: ' + data.error, 'error');
+    }
+
+  } catch (error) {
+    console.error('Upload failed:', error);
+    showNotification('Upload failed: ' + error.message, 'error');
+  }
+}
+
+// Expose globally for kvp-modal.js
+window.uploadFileWithProcessing = uploadFileWithProcessing;
 
 async function handleFileUpload(file) {
   // Check credits before upload

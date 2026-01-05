@@ -313,6 +313,7 @@ class DatabaseClient:
         status: str,
         worker_id: str = None,
         result_s3_key: str = None,
+        json_result_s3_key: str = None,
         processing_time_ms: int = None,
         error_message: str = None
     ) -> bool:
@@ -322,10 +323,11 @@ class DatabaseClient:
         Args:
             task_id: Task UUID
             page_number: Page number (1-indexed)
-            format_type: Format type ('html', 'json', or 'txt')
+            format_type: Format type ('html', 'json', 'txt', 'kvp')
             status: Status ('pending', 'processing', 'completed', 'failed')
             worker_id: Worker ID that processed this page
-            result_s3_key: S3 key for the result
+            result_s3_key: S3 key for the HTML result
+            json_result_s3_key: S3 key for the JSON result (KVP extraction)
             processing_time_ms: Processing time in milliseconds
             error_message: Error message if failed
 
@@ -351,6 +353,10 @@ class DatabaseClient:
                 if result_s3_key is not None:
                     set_clauses.append("result_s3_key = %s")
                     params.append(result_s3_key)
+
+                if json_result_s3_key is not None:
+                    set_clauses.append("json_result_s3_key = %s")
+                    params.append(json_result_s3_key)
 
                 if processing_time_ms is not None:
                     set_clauses.append("processing_time_ms = %s")

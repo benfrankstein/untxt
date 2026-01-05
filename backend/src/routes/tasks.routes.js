@@ -69,8 +69,30 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     console.log(`Processing upload - File: ${fileId}, Task: ${taskId}, User: ${userId}`);
 
-    // Process BOTH formats (HTML + JSON) for every page
-    console.log(`Processing mode: DUAL (HTML + JSON)`);
+    // Check if formatType is specified in request body
+    const formatTypeRaw = req.body.formatType || 'dual'; // Can be 'dual', 'kvp', 'anon', 'kvp,anon', 'html', 'json'
+    const formatTypes = formatTypeRaw.split(',').map(f => f.trim()); // Handle comma-separated
+    const hasKVP = formatTypes.includes('kvp');
+    const hasAnon = formatTypes.includes('anon');
+
+    const selectedKvps = req.body.selectedKvps ? JSON.parse(req.body.selectedKvps) : null;
+
+    // Get anonymization parameters (if applicable)
+    const anonStrategy = req.body.anonStrategy || 'synthetic';
+    const anonGenerateAudit = req.body.anonGenerateAudit === 'true';
+    const selectedEntities = req.body.selectedEntities ? JSON.parse(req.body.selectedEntities) : null;
+    const selectedSectors = req.body.selectedSectors ? JSON.parse(req.body.selectedSectors) : null;
+
+    // Determine processing mode
+    if (hasKVP && hasAnon) {
+      console.log(`Processing mode: KVP + ANON (${selectedKvps ? selectedKvps.length : 'all'} KVP fields, ${selectedEntities ? selectedEntities.length : 'all'} anon entities, strategy: ${anonStrategy})`);
+    } else if (hasKVP) {
+      console.log(`Processing mode: KVP extraction (${selectedKvps ? selectedKvps.length : 'all'} fields)`);
+    } else if (hasAnon) {
+      console.log(`Processing mode: Anonymization (strategy: ${anonStrategy}, entities: ${selectedEntities ? selectedEntities.length : 'all'}, audit: ${anonGenerateAudit})`);
+    } else {
+      console.log(`Processing mode: DUAL (HTML + JSON)`);
+    }
 
     // Generate S3 key for original PDF
     const s3Key = s3Service.generateUploadKey(userId, fileId, req.file.originalname);
@@ -160,34 +182,95 @@ router.post('/', upload.single('file'), async (req, res) => {
     });
 
     // Create task_pages records in database (for HIPAA compliance & page tracking)
-    // Create TWO records per page: one for HTML, one for JSON
-    const totalTaskPages = pageCount * 2; // HTML + JSON per page
-    console.log(`Creating ${totalTaskPages} task_pages record(s) in database (${pageCount} pages × 2 formats)...`);
     const taskPagesData = [];
-    for (let i = 0; i < pageCount; i++) {
-      const pageNum = i + 1;
 
-      // HTML task_page record
-      taskPagesData.push({
-        taskId: taskId,
-        pageNumber: pageNum,
-        totalPages: pageCount,
-        pageImageS3Key: pageS3Keys[i],
-        formatType: 'html',
-      });
+    if (hasKVP && hasAnon) {
+      // KVP + ANON mode: Create TWO records per page: one for KVP, one for Anon
+      const totalTaskPages = pageCount * 2;
+      console.log(`Creating ${totalTaskPages} task_pages record(s) in database (${pageCount} pages × 2 formats: KVP + Anon)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNum = i + 1;
+        // KVP task_page record
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'kvp',
+        });
+        // Anon task_page record
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'anon',
+        });
+      }
+    } else if (hasKVP) {
+      // KVP mode: Create ONE record per page for KVP extraction
+      console.log(`Creating ${pageCount} task_pages record(s) in database (KVP format)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNum = i + 1;
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'kvp',
+        });
+      }
+    } else if (hasAnon) {
+      // Anon mode: Create ONE record per page for anonymization
+      console.log(`Creating ${pageCount} task_pages record(s) in database (Anon format)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNum = i + 1;
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'anon',
+        });
+      }
+    } else {
+      // DUAL mode: Create TWO records per page: one for HTML, one for JSON
+      const totalTaskPages = pageCount * 2; // HTML + JSON per page
+      console.log(`Creating ${totalTaskPages} task_pages record(s) in database (${pageCount} pages × 2 formats)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNum = i + 1;
 
-      // JSON task_page record
-      taskPagesData.push({
-        taskId: taskId,
-        pageNumber: pageNum,
-        totalPages: pageCount,
-        pageImageS3Key: pageS3Keys[i],
-        formatType: 'json',
-      });
+        // HTML task_page record
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'html',
+        });
+
+        // JSON task_page record
+        taskPagesData.push({
+          taskId: taskId,
+          pageNumber: pageNum,
+          totalPages: pageCount,
+          pageImageS3Key: pageS3Keys[i],
+          formatType: 'json',
+        });
+      }
     }
 
     const taskPagesRecords = await dbService.createTaskPages(taskPagesData);
-    console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (${pageCount} HTML + ${pageCount} JSON)`);
+    if (hasKVP && hasAnon) {
+      console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (${pageCount} KVP + ${pageCount} Anon)`);
+    } else if (hasKVP) {
+      console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (KVP)`);
+    } else if (hasAnon) {
+      console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (Anon)`);
+      console.log(`  Strategy: ${anonStrategy}, Audit: ${anonGenerateAudit ? 'enabled' : 'disabled'}, Entities: ${selectedEntities ? selectedEntities.length : 'all'}`);
+    } else {
+      console.log(`✓ Created ${taskPagesRecords.length} task_pages record(s) (${pageCount} HTML + ${pageCount} JSON)`);
+    }
 
     // CREDITS DEDUCTION: Deduct credits per page after task is created
     const creditsPerPage = pageCount; // 1 credit per page
@@ -213,45 +296,141 @@ router.post('/', upload.single('file'), async (req, res) => {
       // This shouldn't happen if validation passed, but log for manual reconciliation
     }
 
-    // Enqueue page tasks to Redis (TWO tasks per page: HTML + JSON)
-    const totalRedisTasks = pageCount * 2;
-    console.log(`Enqueuing ${totalRedisTasks} task(s) to Redis (${pageCount} pages × 2 formats)...`);
-    for (let i = 0; i < pageCount; i++) {
-      const pageNumber = i + 1;
+    // Enqueue page tasks to Redis
+    if (hasKVP && hasAnon) {
+      // KVP + ANON mode: TWO tasks per page (one KVP, one Anon)
+      const totalRedisTasks = pageCount * 2;
+      console.log(`Enqueuing ${totalRedisTasks} task(s) to Redis (${pageCount} pages × 2: KVP + Anon)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNumber = i + 1;
 
-      // Enqueue HTML task
-      const htmlTaskId = `${taskId}_page_${pageNumber}_html`;
-      await redisService.enqueueTask({
-        task_id: htmlTaskId,
-        parent_task_id: taskId,
-        file_id: fileId,
-        user_id: userId,
-        page_number: pageNumber,
-        total_pages: pageCount,
-        page_image_s3_key: pageS3Keys[i],
-        format_type: 'html',
-        filename: req.file.originalname,
-        mime_type: req.file.mimetype,
-        priority: taskRecord.priority,
-      });
-      console.log(`  → Enqueued HTML: page ${pageNumber}/${pageCount}`);
+        // Enqueue KVP task
+        const kvpTaskId = `${taskId}_page_${pageNumber}_kvp`;
+        await redisService.enqueueTask({
+          task_id: kvpTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'kvp',
+          selected_kvps: selectedKvps,
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued KVP: page ${pageNumber}/${pageCount}`);
 
-      // Enqueue JSON task
-      const jsonTaskId = `${taskId}_page_${pageNumber}_json`;
-      await redisService.enqueueTask({
-        task_id: jsonTaskId,
-        parent_task_id: taskId,
-        file_id: fileId,
-        user_id: userId,
-        page_number: pageNumber,
-        total_pages: pageCount,
-        page_image_s3_key: pageS3Keys[i],
-        format_type: 'json',
-        filename: req.file.originalname,
-        mime_type: req.file.mimetype,
-        priority: taskRecord.priority,
-      });
-      console.log(`  → Enqueued JSON: page ${pageNumber}/${pageCount}`);
+        // Enqueue Anon task
+        const anonTaskId = `${taskId}_page_${pageNumber}_anon`;
+        await redisService.enqueueTask({
+          task_id: anonTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'anon',
+          anon_strategy: anonStrategy,
+          anon_generate_audit: anonGenerateAudit,
+          anon_selected_entities: selectedEntities,
+          anon_selected_sectors: selectedSectors,
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued Anon: page ${pageNumber}/${pageCount}`);
+      }
+    } else if (hasKVP) {
+      // KVP mode: One task per page
+      console.log(`Enqueuing ${pageCount} task(s) to Redis (KVP format)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNumber = i + 1;
+        const kvpTaskId = `${taskId}_page_${pageNumber}_kvp`;
+        await redisService.enqueueTask({
+          task_id: kvpTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'kvp',
+          selected_kvps: selectedKvps, // Pass selected KVPs to worker
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued KVP: page ${pageNumber}/${pageCount}`);
+      }
+    } else if (hasAnon) {
+      // Anon mode: One task per page
+      console.log(`Enqueuing ${pageCount} task(s) to Redis (Anon format)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNumber = i + 1;
+        const anonTaskId = `${taskId}_page_${pageNumber}_anon`;
+        await redisService.enqueueTask({
+          task_id: anonTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'anon',
+          anon_strategy: anonStrategy,
+          anon_generate_audit: anonGenerateAudit,
+          anon_selected_entities: selectedEntities,
+          anon_selected_sectors: selectedSectors,
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued Anon: page ${pageNumber}/${pageCount}`);
+      }
+    } else {
+      // DUAL mode: TWO tasks per page: HTML + JSON
+      const totalRedisTasks = pageCount * 2;
+      console.log(`Enqueuing ${totalRedisTasks} task(s) to Redis (${pageCount} pages × 2 formats)...`);
+      for (let i = 0; i < pageCount; i++) {
+        const pageNumber = i + 1;
+
+        // Enqueue HTML task
+        const htmlTaskId = `${taskId}_page_${pageNumber}_html`;
+        await redisService.enqueueTask({
+          task_id: htmlTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'html',
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued HTML: page ${pageNumber}/${pageCount}`);
+
+        // Enqueue JSON task
+        const jsonTaskId = `${taskId}_page_${pageNumber}_json`;
+        await redisService.enqueueTask({
+          task_id: jsonTaskId,
+          parent_task_id: taskId,
+          file_id: fileId,
+          user_id: userId,
+          page_number: pageNumber,
+          total_pages: pageCount,
+          page_image_s3_key: pageS3Keys[i],
+          format_type: 'json',
+          filename: req.file.originalname,
+          mime_type: req.file.mimetype,
+          priority: taskRecord.priority,
+        });
+        console.log(`  → Enqueued JSON: page ${pageNumber}/${pageCount}`);
+      }
     }
 
     // Get queue stats
@@ -369,6 +548,13 @@ router.get('/:taskId', async (req, res) => {
         error: 'Unauthorized to access this task',
       });
     }
+
+    // Fetch task_pages data for format detection
+    const pagesQuery = await dbService.pool.query(
+      'SELECT page_number, format_type, status, result_s3_key, json_result_s3_key, page_image_s3_key FROM task_pages WHERE task_id = $1 ORDER BY page_number',
+      [taskId]
+    );
+    task.pages = pagesQuery.rows;
 
     res.json({
       success: true,
@@ -694,6 +880,225 @@ router.get('/:taskId/json', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch task JSON',
+    });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/kvp-json
+ * Get KVP extraction JSON data (structured key-value pairs)
+ * Supports ?page=N for specific page, or ?aggregated=true for all pages combined
+ */
+router.get('/:taskId/kvp-json', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+    const pageNumber = req.query.page ? parseInt(req.query.page) : null;
+    const aggregated = req.query.aggregated === 'true';
+
+    // 1. Get task to verify ownership
+    const task = await dbService.getTaskById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
+    // 2. Verify ownership
+    if (task.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this task',
+      });
+    }
+
+    // 3. Handle aggregated mode (all pages combined)
+    if (aggregated) {
+      try {
+        // Get all KVP pages for this task
+        const allPages = await dbService.pool.query(
+          'SELECT page_number, json_result_s3_key FROM task_pages WHERE task_id = $1 AND format_type = $2 AND json_result_s3_key IS NOT NULL ORDER BY page_number',
+          [taskId, 'kvp']
+        );
+
+        if (!allPages.rows || allPages.rows.length === 0) {
+          return res.status(404).json({
+            success: false,
+            error: 'No KVP results found for this task',
+          });
+        }
+
+        // Download and combine all pages
+        const allItems = [];
+        const allTables = [];
+
+        for (const page of allPages.rows) {
+          const fileData = await s3Service.streamFileDownload(page.json_result_s3_key);
+          const chunks = [];
+          for await (const chunk of fileData.stream) {
+            chunks.push(chunk);
+          }
+          const jsonContent = Buffer.concat(chunks).toString('utf-8');
+          const pageData = JSON.parse(jsonContent);
+
+          // Extract kvp_output from wrapped format
+          const kvpOutput = pageData.kvp_output || pageData;
+
+          // Combine items from all pages, adding page_number to each item
+          if (kvpOutput.items && Array.isArray(kvpOutput.items)) {
+            const itemsWithPage = kvpOutput.items.map(item => ({
+              ...item,
+              page_number: page.page_number
+            }));
+            allItems.push(...itemsWithPage);
+          }
+
+          // Combine tables from all pages, adding page_number to each table
+          if (kvpOutput.tables && Array.isArray(kvpOutput.tables)) {
+            const tablesWithPage = kvpOutput.tables.map(table => ({
+              ...table,
+              page_number: page.page_number
+            }));
+            allTables.push(...tablesWithPage);
+          }
+        }
+
+        // Return combined result
+        const aggregatedResult = {
+          kvp_output: {
+            items: allItems,
+            tables: allTables
+          },
+          page_count: allPages.rows.length,
+          aggregated: true
+        };
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.json(aggregatedResult);
+
+        console.log(`✓ Served aggregated KVP JSON for task ${taskId} (${allPages.rows.length} pages, ${allItems.length} items)`);
+
+      } catch (aggregateError) {
+        console.error('Error aggregating KVP data:', aggregateError);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to aggregate KVP data',
+        });
+      }
+      return;
+    }
+
+    // 4. Handle single page mode
+    const targetPage = pageNumber || 1;
+    const kvpPage = await dbService.getTaskPageByFormat(taskId, 'kvp', targetPage);
+
+    if (!kvpPage || !kvpPage.json_result_s3_key) {
+      return res.status(404).json({
+        success: false,
+        error: `KVP JSON result not available for page ${targetPage}`,
+      });
+    }
+
+    try {
+      // 5. Download JSON from S3
+      const fileData = await s3Service.streamFileDownload(kvpPage.json_result_s3_key);
+
+      // Read the JSON content from stream
+      const chunks = [];
+      for await (const chunk of fileData.stream) {
+        chunks.push(chunk);
+      }
+      const jsonContent = Buffer.concat(chunks).toString('utf-8');
+
+      // 6. Set response headers
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `inline; filename="kvp_extraction_${taskId}_page${targetPage}.json"`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+
+      // 7. Send JSON content
+      res.send(jsonContent);
+
+      console.log(`✓ Served KVP JSON for task ${taskId}, page ${targetPage}`);
+
+    } catch (jsonError) {
+      console.error('Error downloading KVP JSON from S3:', jsonError);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to download KVP JSON result',
+      });
+    }
+
+  } catch (error) {
+    console.error('Error fetching task KVP JSON:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch task KVP JSON',
+    });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/page-image/:pageNumber
+ * Get original page image for KVP modal preview
+ */
+router.get('/:taskId/page-image/:pageNumber', async (req, res) => {
+  try {
+    const { taskId, pageNumber } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+
+    // 1. Get task to verify ownership
+    const task = await dbService.getTaskById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
+    // 2. Verify ownership
+    if (task.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this task',
+      });
+    }
+
+    // 3. Query task_pages for page image
+    const pageResult = await dbService.pool.query(
+      'SELECT page_image_s3_key FROM task_pages WHERE task_id = $1 AND page_number = $2 LIMIT 1',
+      [taskId, parseInt(pageNumber)]
+    );
+
+    if (!pageResult.rows[0] || !pageResult.rows[0].page_image_s3_key) {
+      return res.status(404).json({
+        success: false,
+        error: 'Page image not found',
+      });
+    }
+
+    const pageImageKey = pageResult.rows[0].page_image_s3_key;
+
+    // 4. Stream image from S3
+    const fileData = await s3Service.streamFileDownload(pageImageKey);
+
+    // 5. Set response headers
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    // 6. Pipe the stream directly to response
+    fileData.stream.pipe(res);
+
+    console.log(`✓ Served page image for task ${taskId}, page ${pageNumber}`);
+
+  } catch (error) {
+    console.error('Error serving page image:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to serve page image',
     });
   }
 });
@@ -1285,6 +1690,182 @@ router.delete('/:taskId', async (req, res) => {
       error: 'Failed to delete task',
       message: error.message,
     });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/anon-json
+ * Get anonymized JSON data
+ * Supports ?page=N for specific page, or ?aggregated=true for all pages combined
+ */
+router.get('/:taskId/anon-json', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+    const pageNumber = req.query.page ? parseInt(req.query.page) : null;
+    const aggregated = req.query.aggregated === 'true';
+
+    // Get task to verify ownership
+    const task = await dbService.getTaskById(taskId);
+    if (!task || task.user_id !== userId) {
+      return res.status(404).json({ success: false, error: 'Task not found or unauthorized' });
+    }
+
+    // Handle aggregated mode
+    if (aggregated) {
+      const allPages = await dbService.pool.query(
+        'SELECT page_number, anon_json_s3_key FROM task_pages WHERE task_id = $1 AND format_type = $2 AND anon_json_s3_key IS NOT NULL ORDER BY page_number',
+        [taskId, 'anon']
+      );
+
+      if (!allPages.rows || allPages.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'No anonymization results found' });
+      }
+
+      // Download and combine all pages
+      const allItems = [];
+      for (const page of allPages.rows) {
+        const fileData = await s3Service.streamFileDownload(page.anon_json_s3_key);
+        const chunks = [];
+        for await (const chunk of fileData.stream) {
+          chunks.push(chunk);
+        }
+        const jsonContent = Buffer.concat(chunks).toString('utf-8');
+        const pageData = JSON.parse(jsonContent);
+
+        // Add page number to items
+        if (pageData.items && Array.isArray(pageData.items)) {
+          const itemsWithPage = pageData.items.map(item => ({ ...item, page_number: page.page_number }));
+          allItems.push(...itemsWithPage);
+        }
+      }
+
+      res.json({ items: allItems, page_count: allPages.rows.length, aggregated: true });
+      console.log(`✓ Served aggregated Anon JSON for task ${taskId} (${allPages.rows.length} pages, ${allItems.length} items)`);
+    } else if (pageNumber) {
+      // Single page
+      const pageData = await dbService.pool.query(
+        'SELECT anon_json_s3_key FROM task_pages WHERE task_id = $1 AND page_number = $2 AND format_type = $3',
+        [taskId, pageNumber, 'anon']
+      );
+
+      if (!pageData.rows[0]?.anon_json_s3_key) {
+        return res.status(404).json({ success: false, error: 'Page not found' });
+      }
+
+      const stream = await s3Service.streamFileDownload(pageData.rows[0].anon_json_s3_key);
+      res.setHeader('Content-Type', 'application/json');
+      stream.pipe(res);
+      console.log(`✓ Served Anon JSON for task ${taskId}, page ${pageNumber}`);
+    } else {
+      res.status(400).json({ success: false, error: 'Specify ?page=N or ?aggregated=true' });
+    }
+  } catch (error) {
+    console.error('❌ Error fetching anon JSON:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/anon-txt
+ * Get tokenized text output
+ */
+router.get('/:taskId/anon-txt', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+    const pageNumber = req.query.page ? parseInt(req.query.page) : 1;
+
+    const task = await dbService.getTaskById(taskId);
+    if (!task || task.user_id !== userId) {
+      return res.status(404).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const pageData = await dbService.pool.query(
+      'SELECT anon_txt_s3_key FROM task_pages WHERE task_id = $1 AND page_number = $2 AND format_type = $3',
+      [taskId, pageNumber, 'anon']
+    );
+
+    if (!pageData.rows[0]?.anon_txt_s3_key) {
+      return res.status(404).json({ success: false, error: 'Tokenized text not found' });
+    }
+
+    const stream = await s3Service.streamFileDownload(pageData.rows[0].anon_txt_s3_key);
+    res.setHeader('Content-Type', 'text/plain');
+    stream.pipe(res);
+    console.log(`✓ Served Anon TXT for task ${taskId}, page ${pageNumber}`);
+  } catch (error) {
+    console.error('❌ Error fetching anon TXT:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/anon-mapping
+ * Get token mapping file (CSV or JSON)
+ */
+router.get('/:taskId/anon-mapping', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+    const pageNumber = req.query.page ? parseInt(req.query.page) : 1;
+
+    const task = await dbService.getTaskById(taskId);
+    if (!task || task.user_id !== userId) {
+      return res.status(404).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const pageData = await dbService.pool.query(
+      'SELECT anon_mapping_s3_key FROM task_pages WHERE task_id = $1 AND page_number = $2 AND format_type = $3',
+      [taskId, pageNumber, 'anon']
+    );
+
+    if (!pageData.rows[0]?.anon_mapping_s3_key) {
+      return res.status(404).json({ success: false, error: 'Mapping file not found' });
+    }
+
+    const stream = await s3Service.streamFileDownload(pageData.rows[0].anon_mapping_s3_key);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="anon_mapping_page_${pageNumber}.json"`);
+    stream.pipe(res);
+    console.log(`✓ Served Anon Mapping for task ${taskId}, page ${pageNumber}`);
+  } catch (error) {
+    console.error('❌ Error fetching anon mapping:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/tasks/:taskId/anon-audit
+ * Get audit trail (if generated)
+ */
+router.get('/:taskId/anon-audit', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.body.userId || req.headers['x-user-id'];
+    const pageNumber = req.query.page ? parseInt(req.query.page) : 1;
+
+    const task = await dbService.getTaskById(taskId);
+    if (!task || task.user_id !== userId) {
+      return res.status(404).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const pageData = await dbService.pool.query(
+      'SELECT anon_audit_s3_key FROM task_pages WHERE task_id = $1 AND page_number = $2 AND format_type = $3',
+      [taskId, pageNumber, 'anon']
+    );
+
+    if (!pageData.rows[0]?.anon_audit_s3_key) {
+      return res.status(404).json({ success: false, error: 'Audit trail not generated for this task' });
+    }
+
+    const stream = await s3Service.streamFileDownload(pageData.rows[0].anon_audit_s3_key);
+    res.setHeader('Content-Type', 'application/json');
+    stream.pipe(res);
+    console.log(`✓ Served Anon Audit for task ${taskId}, page ${pageNumber}`);
+  } catch (error) {
+    console.error('❌ Error fetching anon audit:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

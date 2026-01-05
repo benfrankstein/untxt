@@ -58,6 +58,10 @@
           <div class="form-error" id="loginPasswordError"></div>
         </div>
 
+        <div class="forgot-password-link">
+          <a href="#" id="forgotPasswordLink">Forgot password?</a>
+        </div>
+
         <button type="submit" class="form-button" id="loginButton">
           Log In
         </button>
@@ -188,6 +192,39 @@
     </div>
   </div>
 
-  <script src="auth.js"></script>
+  <!-- Forgot Password Modal -->
+  <div id="forgotPasswordModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" id="closeForgotPasswordModal">&times;</span>
+      <h2>Reset Password</h2>
+      <p class="modal-description">Enter your email address and we'll send you a link to reset your password.</p>
+
+      <div id="forgotPasswordAlert" class="alert"></div>
+
+      <form id="forgotPasswordForm">
+        <div class="form-group">
+          <label class="form-label" for="forgotPasswordEmail">Email Address</label>
+          <input
+            type="email"
+            id="forgotPasswordEmail"
+            class="form-input"
+            placeholder="Enter your email"
+            required
+          />
+          <div class="form-error" id="forgotPasswordEmailError"></div>
+        </div>
+
+        <button type="submit" class="form-button" id="forgotPasswordButton">
+          Send Reset Link
+        </button>
+
+        <button type="button" class="form-button-secondary" id="cancelForgotPasswordButton">
+          Cancel
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="auth.js?v=20251217"></script>
 </body>
 </html>

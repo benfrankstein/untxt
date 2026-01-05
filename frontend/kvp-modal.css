@@ -1,0 +1,909 @@
+/**
+ * KVP Extraction Modal Styles
+ * Matches the design mockup for key-value pair extraction
+ */
+
+/* ============================================================================
+   CUSTOM DIALOG MODALS (Alert, Confirm, Prompt)
+   ============================================================================ */
+
+.dialog-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 20000;
+  justify-content: center;
+  align-items: center;
+  animation: dialogFadeIn 200ms ease;
+}
+
+.dialog-overlay.active {
+  display: flex;
+}
+
+@keyframes dialogFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog-content {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-neutral);
+  border-radius: 12px;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: dialogSlideIn 200ms ease;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    transform: translateY(-20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.dialog-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+}
+
+.dialog-title {
+  font-family: var(--font-family-bold);
+  font-size: 18px;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.dialog-body p {
+  font-family: var(--font-family-base);
+  font-size: 15px;
+  color: var(--color-text);
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 16px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  border-radius: 6px;
+  background: var(--color-bg-base);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  transition: all 150ms ease;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.dialog-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dialog-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-family-medium);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.dialog-btn-cancel {
+  background: transparent;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  color: var(--color-text);
+}
+
+.dialog-btn-cancel:hover {
+  background: rgba(174, 170, 151, 0.1);
+  border-color: var(--color-neutral);
+}
+
+.dialog-btn-confirm {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.dialog-btn-confirm:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.dialog-btn-confirm.danger {
+  background: #e53e3e;
+  color: white;
+}
+
+.dialog-btn-confirm.danger:hover {
+  background: #c53030;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dialog-content {
+    min-width: 320px;
+    max-width: 90vw;
+    margin: 20px;
+  }
+}
+
+/* Modal Content - Wider for KVP */
+.kvp-modal-content {
+  max-width: 1200px !important;
+  width: 95% !important;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tabs */
+.kvp-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-neutral);
+  padding: 0 40px;
+  background: var(--color-bg-surface);
+}
+
+.kvp-tab {
+  flex: 1;
+  padding: 16px 24px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-family-medium);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 200ms ease;
+  border-bottom: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.kvp-tab:hover:not(:disabled) {
+  color: var(--color-text);
+  background: rgba(199, 255, 0, 0.05);
+}
+
+.kvp-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  background: transparent;
+}
+
+.kvp-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kvp-tab-icon {
+  font-size: 16px;
+}
+
+/* Tab Content */
+.kvp-tab-content {
+  display: none;
+  flex: 1;
+  overflow: hidden;
+}
+
+.kvp-tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Grid Layout */
+.kvp-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 32px;
+  padding: 32px 40px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left Side - Files Section */
+.kvp-files-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kvp-section-title {
+  font-family: var(--font-family-bold);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.kvp-file-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid rgba(174, 170, 151, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-bg-base);
+  max-height: 400px;
+}
+
+.kvp-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 150ms ease;
+  margin-bottom: 4px;
+}
+
+.kvp-file-item:hover {
+  background: rgba(174, 170, 151, 0.1);
+}
+
+.kvp-file-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.kvp-file-name {
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kvp-select-all-btn {
+  padding: 10px 16px;
+  border: 1px solid rgba(174, 170, 151, 0.3);
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font-family-medium);
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.kvp-select-all-btn:hover {
+  background: rgba(174, 170, 151, 0.1);
+  border-color: var(--color-neutral);
+}
+
+.kvp-select-all-btn svg {
+  stroke: var(--color-primary);
+}
+
+/* Right Side - Config Section */
+.kvp-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.kvp-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kvp-label {
+  font-family: var(--font-family-bold);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kvp-select,
+.kvp-input {
+  padding: 12px 16px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  border-radius: 6px;
+  background: var(--color-bg-base);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  transition: all 150ms ease;
+}
+
+.kvp-select:focus,
+.kvp-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.kvp-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23AEAA97' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 40px;
+}
+
+/* Selected Sectors Chips */
+.kvp-selected-sectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.kvp-sector-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border-radius: 16px;
+  font-family: var(--font-family-medium);
+  font-size: 13px;
+  transition: opacity 150ms ease;
+}
+
+.kvp-sector-chip.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kvp-sector-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 150ms ease;
+}
+
+.kvp-sector-chip button:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.kvp-sector-chip button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.kvp-clear-sectors-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(174, 170, 151, 0.3);
+  border-radius: 16px;
+  font-family: var(--font-family-medium);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.kvp-clear-sectors-btn:hover {
+  background: rgba(174, 170, 151, 0.1);
+  border-color: var(--color-neutral);
+  color: var(--color-text);
+}
+
+.kvp-clear-sectors-btn svg {
+  stroke: currentColor;
+  width: 12px;
+  height: 12px;
+}
+
+/* Custom Field Input */
+.kvp-custom-field-input {
+  display: flex;
+  gap: 8px;
+}
+
+.kvp-add-btn {
+  padding: 12px;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kvp-add-btn:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.05);
+}
+
+.kvp-add-btn svg {
+  stroke: var(--color-primary-text);
+}
+
+/* Toggle Label (for anonymization enable) */
+.kvp-toggle-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: rgba(199, 255, 0, 0.05);
+  border: 1px solid rgba(199, 255, 0, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.kvp-toggle-label:hover {
+  background: rgba(199, 255, 0, 0.1);
+  border-color: rgba(199, 255, 0, 0.3);
+}
+
+.kvp-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kvp-toggle-text strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.5px;
+}
+
+.kvp-toggle-text small {
+  font-size: 11px;
+  color: #666;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 24px;
+}
+
+.toggle-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-input:checked + .toggle-slider {
+  background-color: var(--color-primary);
+}
+
+.toggle-input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
+/* Active Preset Card */
+.kvp-active-preset-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid rgba(174, 170, 151, 0.3);
+  border-radius: 6px;
+  background: var(--color-bg-base);
+  margin-bottom: 16px;
+  transition: all 200ms ease;
+}
+
+.kvp-active-preset-card.loaded {
+  border-color: var(--color-primary);
+  background: rgba(199, 255, 0, 0.05);
+}
+
+.kvp-active-preset-card.modified {
+  border-color: #ff9800;
+  background: rgba(255, 152, 0, 0.05);
+}
+
+.kvp-active-preset-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.kvp-active-preset-status {
+  font-family: var(--font-family-bold);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.kvp-active-preset-card.loaded .kvp-active-preset-status {
+  color: var(--color-primary);
+  background: rgba(199, 255, 0, 0.15);
+}
+
+.kvp-active-preset-card.modified .kvp-active-preset-status {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.kvp-active-preset-name {
+  font-family: var(--font-family-medium);
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.kvp-active-preset-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.kvp-preset-update-btn {
+  padding: 8px 16px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-family-medium);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kvp-preset-update-btn:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(199, 255, 0, 0.3);
+}
+
+.kvp-preset-update-btn svg {
+  stroke: currentColor;
+}
+
+.kvp-preset-action-btn {
+  padding: 6px;
+  background: transparent;
+  border: 1px solid rgba(174, 170, 151, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+}
+
+.kvp-preset-action-btn:hover {
+  background: rgba(174, 170, 151, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.kvp-preset-action-btn svg {
+  stroke: currentColor;
+}
+
+/* Preset Name Input */
+.kvp-preset-name-input {
+  display: flex;
+  gap: 8px;
+}
+
+.kvp-save-preset-btn {
+  padding: 12px 24px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-family-medium);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.kvp-save-preset-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.kvp-save-preset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* KVP Selection Section */
+.kvp-selection-section {
+  border-top: 1px solid rgba(174, 170, 151, 0.2);
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kvp-section-subtitle {
+  font-family: var(--font-family-bold);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.kvp-select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-family-medium);
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.kvp-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+/* KVP List */
+.kvp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--color-bg-base);
+  border: 1px solid rgba(174, 170, 151, 0.2);
+  border-radius: 8px;
+}
+
+.kvp-empty-message {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  padding: 32px;
+  margin: 0;
+}
+
+/* Sector Group in KVP List */
+.kvp-sector-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kvp-sector-group-header {
+  font-family: var(--font-family-bold);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+}
+
+.kvp-sector-group-count {
+  color: var(--color-text-secondary);
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.kvp-sector-group-items {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* Individual KVP Item */
+.kvp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.kvp-item:hover {
+  background: rgba(199, 255, 0, 0.05);
+  border-color: var(--color-primary);
+}
+
+.kvp-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.kvp-item-label {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  color: var(--color-text);
+  flex: 1;
+  cursor: pointer;
+}
+
+/* Custom field styling removed - custom fields now look the same as master KVPs */
+/* .kvp-item.custom {
+  background: rgba(199, 255, 0, 0.1);
+  border-color: var(--color-primary);
+}
+
+.kvp-item.custom .kvp-item-label {
+  font-family: var(--font-family-medium);
+} */
+
+/* Modal Footer */
+.kvp-modal-footer {
+  border-top: 1px solid rgba(174, 170, 151, 0.2);
+  padding: 20px 40px;
+  background: var(--color-bg-surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+/* Scrollbar Styling */
+.kvp-file-list::-webkit-scrollbar,
+.kvp-config-section::-webkit-scrollbar,
+.kvp-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kvp-file-list::-webkit-scrollbar-track,
+.kvp-config-section::-webkit-scrollbar-track,
+.kvp-list::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+  border-radius: 4px;
+}
+
+.kvp-file-list::-webkit-scrollbar-thumb,
+.kvp-config-section::-webkit-scrollbar-thumb,
+.kvp-list::-webkit-scrollbar-thumb {
+  background: var(--color-neutral);
+  border-radius: 4px;
+}
+
+.kvp-file-list::-webkit-scrollbar-thumb:hover,
+.kvp-config-section::-webkit-scrollbar-thumb:hover,
+.kvp-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .kvp-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .kvp-files-section {
+    max-height: 300px;
+  }
+
+  .kvp-sector-group-items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kvp-modal-content {
+    width: 100% !important;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .kvp-tabs {
+    padding: 0 20px;
+  }
+
+  .kvp-tab {
+    font-size: 11px;
+    padding: 12px 16px;
+  }
+
+  .kvp-grid {
+    padding: 20px;
+  }
+
+  .kvp-sector-group-items {
+    grid-template-columns: 1fr;
+  }
+
+  .kvp-modal-footer {
+    padding: 16px 20px;
+  }
+}

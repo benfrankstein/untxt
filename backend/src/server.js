@@ -9,6 +9,7 @@ const s3Service = require('./services/s3.service');
 const versionsRoutes = require('./routes/versions.routes');
 const sessionsRoutes = require('./routes/sessions.routes');
 const creditsRoutes = require('./routes/credits.routes');
+const kvpRoutes = require('./routes/kvp.routes');
 
 const app = express();
 
@@ -144,6 +145,7 @@ app.get('/api/test/download/:s3Key(*)', async (req, res) => {
 app.use('/api/versions', versionsRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/credits', creditsRoutes);
+app.use('/api/kvp', kvpRoutes);
 
 // 404 handler
 app.use((req, res) => {

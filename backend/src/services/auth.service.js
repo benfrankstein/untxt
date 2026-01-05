@@ -290,6 +290,28 @@ async function getUserProfile(userId) {
   return userWithoutPassword;
 }
 
+/**
+ * Update user password
+ * @param {string} userId - User ID
+ * @param {string} newPassword - New plain text password
+ * @returns {Promise<void>}
+ */
+async function updatePassword(userId, newPassword) {
+  // Validate password
+  const passwordValidation = validatePassword(newPassword);
+  if (!passwordValidation.valid) {
+    throw new Error(passwordValidation.errors[0]);
+  }
+
+  // Hash new password
+  const passwordHash = await hashPassword(newPassword);
+
+  // Update password in database
+  await dbService.updateUserPassword(userId, passwordHash);
+
+  console.log(`✓ Password updated for user: ${userId}`);
+}
+
 module.exports = {
   validatePassword,
   validateEmail,
@@ -299,5 +321,6 @@ module.exports = {
   registerUser,
   authenticateUser,
   getPasswordRequirements,
-  getUserProfile
+  getUserProfile,
+  updatePassword
 };

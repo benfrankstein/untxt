@@ -310,3 +310,388 @@ def process_json_page(
             'page_number': page_number,
             'format_type': 'json'
         }
+
+
+def process_kvp_page(
+    model,
+    processor,
+    config,
+    image_path: str,
+    page_number: int,
+    selected_kvps: list = None
+) -> Dict[str, Any]:
+    """
+    Process a single page for KVP extraction using PRISM V008 prompt
+
+    Args:
+        model: MLX model
+        processor: AutoProcessor
+        config: Model config
+        image_path: Path to page image
+        page_number: Page number (for metadata)
+        selected_kvps: Optional list of specific KVP keys to extract
+
+    Returns:
+        Dict with 'kvp_output', 'html_output', 'processing_time_ms'
+    """
+    import time
+    from kvp_processor import (
+        build_kvp_extraction_prompt,
+        load_master_kvps,
+        normalize_extracted_output,
+        build_alias_map,
+        build_structured_output
+    )
+    from kvp_to_html import kvp_json_to_html
+
+    start_time = time.time()
+
+    logger.info(f"Processing page {page_number} for KVP extraction...")
+
+    # Log selected KVPs if provided
+    if selected_kvps:
+        logger.info(f"Selected KVPs for extraction: {len(selected_kvps)} fields")
+        logger.debug(f"Selected KVP list: {selected_kvps}")
+    else:
+        logger.info("No specific KVPs selected - extracting all fields")
+
+    # Load master KVPs
+    master_kvps = load_master_kvps()
+    if master_kvps:
+        total_keys = len(master_kvps['keys'])
+        total_sectors = len(master_kvps['sectors'])
+        logger.info(f"✓ Loaded {total_keys} master KVPs from {total_sectors} sectors")
+    else:
+        logger.warning("⚠ No master KVPs loaded, using open-ended extraction")
+
+    # Build KVP extraction prompt
+    prompt = build_kvp_extraction_prompt(selected_kvps)
+
+    # Log the full prompt being sent to Qwen
+    logger.info("=" * 80)
+    logger.info("PROMPT SENT TO QWEN MODEL:")
+    logger.info("=" * 80)
+    logger.info(prompt)
+    logger.info("=" * 80)
+
+    # Generate KVP extraction with MLX
+    logger.info(f"Generating KVP extraction for page {page_number}...")
+    output_text = generate_with_mlx(
+        model,
+        processor,
+        config,
+        image_path,
+        prompt,
+        {
+            'temp': 0.0,
+            'max_tokens': 20480,  # Increased for KVP extraction
+        }
+    )
+
+    logger.info(f"Generated {len(output_text)} chars of output")
+
+    # Log the raw model output to console
+    logger.info("=" * 80)
+    logger.info("RAW MODEL OUTPUT (KVP EXTRACTION):")
+    logger.info("=" * 80)
+    logger.info(output_text[:2000] + ("..." if len(output_text) > 2000 else ""))  # First 2000 chars
+    logger.info("=" * 80)
+
+    # Log raw output to file for debugging
+    try:
+        task_id = Path(image_path).stem.rsplit('_page_', 1)[0] if '_page_' in Path(image_path).stem else 'unknown'
+        _log_model_output(output_text, task_id, page_number, 'kvp')
+    except Exception as e:
+        logger.warning(f"Failed to log model output: {e}")
+
+    # Parse JSON from output
+    json_match = re.search(r"\{.*\}", output_text, re.DOTALL)
+    if json_match:
+        try:
+            raw_result = json.loads(json_match.group(0))
+
+            # Check if it's the new format {items: [], tables: []}
+            if 'items' in raw_result or 'tables' in raw_result:
+                items_count = len(raw_result.get('items', []))
+                tables_count = len(raw_result.get('tables', []))
+                table_rows = sum(len(t.get('rows', [])) for t in raw_result.get('tables', []))
+
+                logger.info(f"✓ Raw extraction: {items_count} items, {tables_count} tables ({table_rows} rows)")
+
+                # Check if user selected specific KVPs
+                if selected_kvps and len(selected_kvps) > 0:
+                    # Build alias map for matching
+                    alias_map = build_alias_map(master_kvps) if master_kvps else ({}, {})
+
+                    # Build structured output with ONLY selected keys
+                    structured_output = build_structured_output(raw_result, selected_kvps, alias_map)
+
+                    logger.info(f"✓ Structured output: {len(structured_output)} selected fields")
+
+                    # Log structured output
+                    logger.info("=" * 80)
+                    logger.info("STRUCTURED OUTPUT (SELECTED FIELDS ONLY):")
+                    logger.info("=" * 80)
+                    for key, value in structured_output.items():
+                        status = "✓" if value else "✗"
+                        logger.info(f"  {status} {key}: {value or '(not found)'}")
+                    logger.info("=" * 80)
+
+                    # IMPORTANT: Store RAW extraction (items array) for S3, not structured output
+                    # This preserves multiple values for the same key
+                    kvp_output = raw_result  # Keep items array format
+                    html_output = kvp_json_to_html({'structured': structured_output, 'selected_kvps': selected_kvps})
+
+                else:
+                    # No specific KVPs selected - use full categorized output
+                    normalized_result = normalize_extracted_output(raw_result, master_kvps)
+
+                    total_pairs = sum(
+                        len(items) for cat, items in normalized_result['fields'].items()
+                        if cat != 'line_items' and isinstance(items, list)
+                    )
+                    line_items = normalized_result['fields']['line_items']
+
+                    logger.info(f"✓ Normalized: {total_pairs} KVPs categorized, {len(line_items)} line items")
+
+                    # Log normalized output summary
+                    logger.info("=" * 80)
+                    logger.info("NORMALIZED OUTPUT SUMMARY:")
+                    logger.info("=" * 80)
+                    for category, items in normalized_result['fields'].items():
+                        if category != 'line_items' and isinstance(items, list):
+                            logger.info(f"  {category}: {len(items)} items")
+                            for item in items[:3]:  # Show first 3 items
+                                logger.info(f"    - {item.get('standardized_key', 'N/A')}: {item.get('value', 'N/A')}")
+                            if len(items) > 3:
+                                logger.info(f"    ... and {len(items) - 3} more")
+                    logger.info(f"  line_items: {len(line_items)} rows")
+                    logger.info("=" * 80)
+
+                    # Use normalized result as the KVP output
+                    kvp_output = normalized_result
+                    html_output = kvp_json_to_html(normalized_result)
+
+                processing_time = int((time.time() - start_time) * 1000)
+
+                logger.info(f"✓ Page {page_number} KVP extraction completed in {processing_time}ms")
+
+                return {
+                    'kvp_output': kvp_output,  # Structured KVP data (either structured_output or normalized_result)
+                    'html_output': html_output,       # HTML for viewing
+                    'processing_time_ms': processing_time,
+                    'page_number': page_number,
+                    'format_type': 'kvp'
+                }
+            else:
+                logger.error("Unknown JSON format from model")
+                processing_time = int((time.time() - start_time) * 1000)
+                return {
+                    'error': 'unknown format',
+                    'raw': output_text,
+                    'processing_time_ms': processing_time,
+                    'page_number': page_number,
+                    'format_type': 'kvp'
+                }
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}")
+            processing_time = int((time.time() - start_time) * 1000)
+            return {
+                'error': 'invalid json',
+                'raw': output_text,
+                'processing_time_ms': processing_time,
+                'page_number': page_number,
+                'format_type': 'kvp'
+            }
+    else:
+        logger.error("No valid JSON found in output")
+        processing_time = int((time.time() - start_time) * 1000)
+        return {
+            'error': 'no valid json',
+            'raw': output_text,
+            'processing_time_ms': processing_time,
+            'page_number': page_number,
+            'format_type': 'kvp'
+        }
+
+
+def process_anon_page(
+    model,
+    processor,
+    config,
+    image_path: str,
+    page_number: int,
+    strategy: str = 'synthetic',
+    generate_audit: bool = False,
+    selected_fields: list = None
+) -> Dict[str, Any]:
+    """
+    Process a single page for PII anonymization.
+    First extracts ALL key-value pairs, then applies anonymization strategy.
+
+    Args:
+        model: MLX model
+        processor: AutoProcessor
+        config: Model config
+        image_path: Path to page image
+        page_number: Page number (for metadata)
+        strategy: Anonymization strategy ('synthetic', 'redact', 'generalize', 'mask')
+        generate_audit: Whether to generate compliance audit trail
+        selected_fields: Optional list of fields user is interested in (for logging)
+
+    Returns:
+        Dict with 'anon_json', 'anon_txt', 'anon_mapping', 'anon_audit' (optional)
+    """
+    import time
+    from anon_processor import (
+        build_anon_extraction_prompt,
+        anonymize_extracted_data,
+        generate_tokenized_output
+    )
+
+    start_time = time.time()
+
+    logger.info(f"Processing page {page_number} for anonymization (strategy: {strategy})...")
+
+    if selected_fields:
+        logger.info(f"User interested in: {len(selected_fields)} fields")
+    else:
+        logger.info("Extracting ALL fields for anonymization")
+
+    # Build anonymization extraction prompt (extracts everything)
+    prompt = build_anon_extraction_prompt(selected_fields)
+
+    # Log prompt
+    logger.info("=" * 80)
+    logger.info("ANONYMIZATION PROMPT:")
+    logger.info("=" * 80)
+    logger.info(prompt[:500] + "..." if len(prompt) > 500 else prompt)
+    logger.info("=" * 80)
+
+    # Generate extraction with MLX
+    logger.info(f"Extracting ALL fields from page {page_number}...")
+    output_text = generate_with_mlx(
+        model,
+        processor,
+        config,
+        image_path,
+        prompt,
+        {
+            'temp': 0.0,
+            'max_tokens': 20480,
+        }
+    )
+
+    logger.info(f"Generated {len(output_text)} chars of output")
+
+    # Log raw output
+    logger.info("=" * 80)
+    logger.info("RAW EXTRACTION OUTPUT:")
+    logger.info("=" * 80)
+    logger.info(output_text[:1000] + ("..." if len(output_text) > 1000 else ""))
+    logger.info("=" * 80)
+
+    # Log to file
+    try:
+        task_id = Path(image_path).stem.rsplit('_page_', 1)[0] if '_page_' in Path(image_path).stem else 'unknown'
+        _log_model_output(output_text, task_id, page_number, 'anon_extraction')
+    except Exception as e:
+        logger.warning(f"Failed to log model output: {e}")
+
+    # Parse JSON
+    json_match = re.search(r"\{.*\}", output_text, re.DOTALL)
+    if json_match:
+        try:
+            raw_extraction = json.loads(json_match.group(0))
+
+            # Check format
+            if 'items' in raw_extraction or 'tables' in raw_extraction:
+                items_count = len(raw_extraction.get('items', []))
+                tables_count = len(raw_extraction.get('tables', []))
+
+                logger.info(f"✓ Extracted: {items_count} items, {tables_count} tables")
+
+                # Apply anonymization
+                logger.info(f"Applying {strategy} anonymization...")
+                anonymized_data, audit_trail, mapping = anonymize_extracted_data(
+                    raw_extraction,
+                    strategy=strategy,
+                    generate_audit=generate_audit
+                )
+
+                logger.info(f"✓ Anonymized {len(mapping)} values")
+
+                # Generate tokenized output
+                redacted_lines, token_map = generate_tokenized_output(mapping)
+
+                # Create TXT output
+                anon_txt = "\n".join(redacted_lines)
+
+                # Create mapping output
+                anon_mapping = {
+                    'tokens': token_map,
+                    'strategy': strategy,
+                    'page_number': page_number,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+                processing_time = int((time.time() - start_time) * 1000)
+
+                logger.info(f"✓ Page {page_number} anonymization completed in {processing_time}ms")
+
+                result = {
+                    'anon_json': anonymized_data,           # Anonymized JSON (with synthetic values)
+                    'anon_txt': anon_txt,                   # Tokenized TXT ([NAME_001]: [DATE_001])
+                    'anon_mapping': anon_mapping,           # Token → Original mapping
+                    'processing_time_ms': processing_time,
+                    'page_number': page_number,
+                    'format_type': 'anon',
+                    'strategy': strategy
+                }
+
+                # Add audit trail if requested
+                if generate_audit and audit_trail:
+                    result['anon_audit'] = {
+                        'version': 'ANON_V001',
+                        'timestamp': datetime.now().isoformat(),
+                        'strategy': strategy,
+                        'page_number': page_number,
+                        'total_fields': len(audit_trail),
+                        'entries': audit_trail
+                    }
+                    logger.info(f"✓ Generated audit trail with {len(audit_trail)} entries")
+
+                return result
+
+            else:
+                logger.error("Unknown JSON format from model")
+                processing_time = int((time.time() - start_time) * 1000)
+                return {
+                    'error': 'unknown format',
+                    'raw': output_text,
+                    'processing_time_ms': processing_time,
+                    'page_number': page_number,
+                    'format_type': 'anon'
+                }
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}")
+            processing_time = int((time.time() - start_time) * 1000)
+            return {
+                'error': 'invalid json',
+                'raw': output_text,
+                'processing_time_ms': processing_time,
+                'page_number': page_number,
+                'format_type': 'anon'
+            }
+    else:
+        logger.error("No valid JSON found in output")
+        processing_time = int((time.time() - start_time) * 1000)
+        return {
+            'error': 'no valid json',
+            'raw': output_text,
+            'processing_time_ms': processing_time,
+            'page_number': page_number,
+            'format_type': 'anon'
+        }

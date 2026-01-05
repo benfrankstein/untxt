@@ -10,6 +10,9 @@ const authService = require('../services/auth.service');
 const googleAuthService = require('../services/google-auth.service');
 const sessionService = require('../services/session.service');
 const auditService = require('../services/audit.service');
+const passwordResetService = require('../services/password-reset.service');
+const emailService = require('../services/email.service');
+const { rateLimiters } = require('../middleware/rate-limit.middleware');
 
 /**
  * POST /api/auth/signup
@@ -635,6 +638,281 @@ router.get('/check-email', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to check email'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Request a password reset email
+ * Rate limited: 3 requests per 15 minutes per IP
+ */
+router.post('/forgot-password', rateLimiters.passwordReset, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required'
+      });
+    }
+
+    const ipAddress = sessionService.getClientIP(req);
+    const userAgent = sessionService.getUserAgent(req);
+
+    // Get user (only local auth users can reset password)
+    const user = await passwordResetService.getUserForPasswordReset(email);
+
+    // Check if user exists
+    if (!user) {
+      // User doesn't exist
+      await auditService.logEvent({
+        eventType: 'PASSWORD_RESET_ATTEMPTED',
+        eventCategory: 'auth',
+        userId: null,
+        ipAddress,
+        userAgent,
+        severity: 'warning',
+        details: {
+          email,
+          reason: 'nonexistent_email'
+        }
+      });
+
+      return res.status(404).json({
+        success: false,
+        error: 'No account found with that email address. Please check your email or sign up.'
+      });
+    }
+
+    // User exists with local auth, proceed with password reset
+    // Create reset token
+    const { token, expiresAt } = await passwordResetService.createResetToken(
+      user.userId,
+      ipAddress,
+      userAgent
+    );
+
+    // Send reset email
+    try {
+      await emailService.sendPasswordResetEmail(email, token);
+
+      // Audit log
+      await auditService.logEvent({
+        eventType: 'PASSWORD_RESET_REQUESTED',
+        eventCategory: 'security',
+        userId: user.userId,
+        ipAddress,
+        userAgent,
+        severity: 'info',
+        details: {
+          email,
+          expiresAt
+        }
+      });
+
+      // Return success message
+      res.json({
+        success: true,
+        message: 'Account found! Check your email for a password reset link. It will expire in 15 minutes.'
+      });
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+
+      // Log email failure
+      await auditService.logEvent({
+        eventType: 'PASSWORD_RESET_EMAIL_FAILED',
+        eventCategory: 'security',
+        userId: user.userId,
+        ipAddress,
+        userAgent,
+        severity: 'error',
+        details: {
+          email,
+          error: emailError.message
+        }
+      });
+
+      // Return error to user
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to send reset email. Please try again later.'
+      });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'An error occurred. Please try again later.'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/reset-password/:token
+ * Validate a password reset token
+ */
+router.get('/reset-password/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token is required'
+      });
+    }
+
+    const ipAddress = sessionService.getClientIP(req);
+    const userAgent = sessionService.getUserAgent(req);
+
+    // Validate token
+    const validation = await passwordResetService.validateResetToken(token);
+
+    if (!validation.valid) {
+      // Audit log - invalid token attempt
+      await auditService.logEvent({
+        eventType: 'PASSWORD_RESET_TOKEN_INVALID',
+        eventCategory: 'security',
+        userId: null,
+        ipAddress,
+        userAgent,
+        severity: 'warning',
+        details: {
+          reason: validation.reason
+        }
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: validation.reason
+      });
+    }
+
+    // Audit log - valid token
+    await auditService.logEvent({
+      eventType: 'PASSWORD_RESET_TOKEN_VALIDATED',
+      eventCategory: 'security',
+      userId: validation.userId,
+      ipAddress,
+      userAgent,
+      severity: 'info'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        email: validation.email
+      }
+    });
+  } catch (error) {
+    console.error('Validate reset token error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to validate token'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using a valid token
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token and new password are required'
+      });
+    }
+
+    const ipAddress = sessionService.getClientIP(req);
+    const userAgent = sessionService.getUserAgent(req);
+
+    // Validate token
+    const validation = await passwordResetService.validateResetToken(token);
+
+    if (!validation.valid) {
+      // Audit log - invalid token
+      await auditService.logEvent({
+        eventType: 'PASSWORD_RESET_FAILED',
+        eventCategory: 'security',
+        userId: null,
+        ipAddress,
+        userAgent,
+        severity: 'warning',
+        details: {
+          reason: validation.reason
+        }
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: validation.reason
+      });
+    }
+
+    // Validate password strength
+    console.log('🔍 Validating password strength...');
+    const passwordValidation = authService.validatePassword(newPassword);
+    console.log('🔍 Password validation result:', passwordValidation);
+
+    if (!passwordValidation.valid) {
+      console.log('❌ Password validation failed:', passwordValidation.errors);
+      return res.status(400).json({
+        success: false,
+        error: passwordValidation.errors.join(', ')
+      });
+    }
+
+    // Update password
+    console.log('🔍 Updating password for user:', validation.userId);
+    await authService.updatePassword(validation.userId, newPassword);
+    console.log('✅ Password updated successfully');
+
+    // Mark token as used
+    console.log('🔍 Marking token as used:', validation.tokenId);
+    await passwordResetService.markTokenAsUsed(validation.tokenId);
+    console.log('✅ Token marked as used');
+
+    // Invalidate all user sessions (force re-login)
+    console.log('🔍 Destroying all user sessions...');
+    await sessionService.destroyAllUserSessions(validation.userId, 'password_reset');
+    console.log('✅ All sessions destroyed');
+
+    // Send confirmation email
+    try {
+      await emailService.sendPasswordChangedConfirmation(validation.email);
+    } catch (emailError) {
+      console.error('Failed to send password changed confirmation:', emailError);
+      // Don't fail the request if confirmation email fails
+    }
+
+    // Audit log - password changed
+    await auditService.logEvent({
+      eventType: 'PASSWORD_RESET_COMPLETED',
+      eventCategory: 'security',
+      userId: validation.userId,
+      ipAddress,
+      userAgent,
+      severity: 'info'
+    });
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. Please log in with your new password.'
+    });
+  } catch (error) {
+    console.error('❌ Reset password error:', error);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset password. Please try again.'
     });
   }
 });

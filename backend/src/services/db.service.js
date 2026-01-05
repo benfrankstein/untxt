@@ -169,6 +169,7 @@ class DatabaseService {
     const query = `
       SELECT
         result_s3_key,
+        json_result_s3_key,
         status,
         processing_time_ms,
         error_message
@@ -376,6 +377,20 @@ class DatabaseService {
       RETURNING id;
     `;
     const result = await this.pool.query(query, [userId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update user password
+   */
+  async updateUserPassword(userId, passwordHash) {
+    const query = `
+      UPDATE users
+      SET password_hash = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id;
+    `;
+    const result = await this.pool.query(query, [userId, passwordHash]);
     return result.rows[0] || null;
   }
 

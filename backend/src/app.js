@@ -15,6 +15,8 @@ const workerPoolService = require('./services/worker-pool.service');
 const tasksRoutes = require('./routes/tasks.routes');
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
+const kvpRoutes = require('./routes/kvp.routes');
+const anonRoutes = require('./routes/anon.routes');
 // REMOVED: Document editing routes (not needed)
 // const versionsRoutes = require('./routes/versions.routes');
 // const sessionsRoutes = require('./routes/sessions.routes');
@@ -88,6 +90,8 @@ app.get('/health', async (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/kvp', kvpRoutes); // KVP extraction system
+app.use('/api/anon', anonRoutes); // Anonymization system
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/folders', foldersRoutes); // Project folder organization
 app.use('/api/admin', adminRoutes); // Access control & revocation endpoints

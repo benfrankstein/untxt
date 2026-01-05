@@ -1,0 +1,726 @@
+/**
+ * Anonymization Modal Styles
+ * PII detection and anonymization UI
+ */
+
+/* ============================================================================
+   MODAL OVERLAY & CONTAINER
+   ============================================================================ */
+
+.anon-modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 200ms ease;
+}
+
+.anon-modal-overlay.active {
+  display: flex;
+}
+
+.anon-modal-container {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-neutral);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 1400px;
+  height: 85vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 300ms ease;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(40px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   MODAL HEADER
+   ============================================================================ */
+
+.anon-modal-header {
+  padding: 24px 32px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.anon-modal-title {
+  font-family: var(--font-family-bold);
+  font-size: 24px;
+  color: var(--color-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.anon-modal-title-icon {
+  font-size: 28px;
+}
+
+.anon-modal-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+}
+
+.anon-modal-close:hover {
+  background: rgba(174, 170, 151, 0.1);
+  color: var(--color-text);
+}
+
+/* ============================================================================
+   MODAL BODY & LAYOUT
+   ============================================================================ */
+
+.anon-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.anon-modal-sidebar {
+  width: 320px;
+  border-right: 1px solid rgba(174, 170, 151, 0.2);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-base);
+}
+
+.anon-modal-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   SIDEBAR: FILE LIST
+   ============================================================================ */
+
+.anon-sidebar-section {
+  padding: 20px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+}
+
+.anon-sidebar-section-title {
+  font-family: var(--font-family-bold);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+.anon-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  border: 1px solid rgba(174, 170, 151, 0.2);
+  margin-bottom: 8px;
+}
+
+.anon-file-item .file-icon {
+  font-size: 24px;
+}
+
+.anon-file-item .file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.anon-file-item .file-name {
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anon-file-item .file-size {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.anon-file-item .file-check {
+  color: var(--color-primary);
+  font-size: 18px;
+}
+
+/* ============================================================================
+   MAIN: STRATEGY SELECTION
+   ============================================================================ */
+
+.anon-main-section {
+  padding: 24px 32px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+  overflow-y: auto;
+}
+
+.anon-main-section-title {
+  font-family: var(--font-family-bold);
+  font-size: 16px;
+  color: var(--color-text);
+  margin-bottom: 16px;
+}
+
+.anon-strategy-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.anon-strategy-card {
+  position: relative;
+  padding: 20px;
+  border-radius: 12px;
+  border: 2px solid rgba(174, 170, 151, 0.2);
+  background: var(--color-bg-surface);
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.anon-strategy-card:hover {
+  border-color: rgba(199, 255, 0, 0.4);
+  background: rgba(199, 255, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.anon-strategy-card.selected {
+  border-color: var(--color-primary);
+  background: rgba(199, 255, 0, 0.1);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.anon-strategy-card.recommended {
+  border-color: #4CAF50;
+}
+
+.strategy-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.strategy-info {
+  flex: 1;
+}
+
+.strategy-name {
+  font-family: var(--font-family-bold);
+  font-size: 16px;
+  color: var(--color-text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recommended-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #4CAF50;
+  color: white;
+  font-family: var(--font-family-base);
+}
+
+.strategy-description {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.strategy-select-icon {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  color: var(--color-primary);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.anon-strategy-card.selected .strategy-select-icon {
+  opacity: 1;
+}
+
+/* ============================================================================
+   AUDIT TRAIL CHECKBOX
+   ============================================================================ */
+
+.anon-audit-section {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(174, 170, 151, 0.05);
+  border: 1px solid rgba(174, 170, 151, 0.2);
+}
+
+.anon-audit-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.anon-audit-checkbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.anon-audit-label {
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.anon-audit-description {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   SECTOR SELECTION
+   ============================================================================ */
+
+.anon-sector-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.anon-sector-select {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  background: var(--color-bg-base);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.anon-sector-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.anon-selected-sectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.anon-sector-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(199, 255, 0, 0.15);
+  border: 1px solid rgba(199, 255, 0, 0.3);
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.anon-sector-chip .sector-icon {
+  font-size: 16px;
+}
+
+.sector-remove-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  transition: color 150ms ease;
+}
+
+.sector-remove-btn:hover {
+  color: var(--color-text);
+}
+
+/* ============================================================================
+   FIELD SELECTION
+   ============================================================================ */
+
+.anon-field-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(174, 170, 151, 0.2);
+}
+
+.anon-field-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.anon-field-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.anon-field-sector-section {
+  margin-bottom: 24px;
+}
+
+.anon-field-sector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(174, 170, 151, 0.05);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-family: var(--font-family-bold);
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.anon-field-sector-header .sector-field-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-base);
+}
+
+.anon-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+}
+
+.anon-field-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(174, 170, 151, 0.2);
+  background: var(--color-bg-surface);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.anon-field-card:hover {
+  border-color: rgba(199, 255, 0, 0.4);
+  background: rgba(199, 255, 0, 0.05);
+}
+
+.anon-field-card.selected {
+  border-color: var(--color-primary);
+  background: rgba(199, 255, 0, 0.1);
+}
+
+.field-checkbox {
+  flex-shrink: 0;
+}
+
+.field-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.field-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-name {
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.field-description {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+/* ============================================================================
+   PRESETS
+   ============================================================================ */
+
+.anon-preset-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.anon-preset-select {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  background: var(--color-bg-base);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.anon-preset-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.anon-active-preset-card {
+  display: none;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(199, 255, 0, 0.1);
+  border: 1px solid rgba(199, 255, 0, 0.3);
+  margin-bottom: 16px;
+}
+
+.preset-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preset-icon {
+  font-size: 24px;
+}
+
+.preset-info {
+  flex: 1;
+}
+
+.preset-name {
+  font-family: var(--font-family-bold);
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.preset-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.preset-clear-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 150ms ease;
+}
+
+.preset-clear-btn:hover {
+  color: var(--color-text);
+}
+
+.anon-preset-save-section {
+  display: none;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(174, 170, 151, 0.2);
+  margin-top: 16px;
+}
+
+.anon-preset-name-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  background: var(--color-bg-base);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  color: var(--color-text);
+  transition: all 150ms ease;
+}
+
+.anon-preset-name-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(199, 255, 0, 0.1);
+}
+
+.anon-preset-save-btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  background: var(--color-primary);
+  color: black;
+  font-family: var(--font-family-bold);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.anon-preset-save-btn:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+/* ============================================================================
+   EMPTY STATES
+   ============================================================================ */
+
+.anon-empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.anon-loading {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+/* ============================================================================
+   MODAL FOOTER
+   ============================================================================ */
+
+.anon-modal-footer {
+  padding: 20px 32px;
+  border-top: 1px solid rgba(174, 170, 151, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--color-bg-base);
+}
+
+.anon-modal-footer-left {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.anon-modal-footer-right {
+  display: flex;
+  gap: 12px;
+}
+
+.anon-cancel-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(174, 170, 151, 0.4);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.anon-cancel-btn:hover {
+  background: rgba(174, 170, 151, 0.1);
+}
+
+.anon-process-btn {
+  padding: 12px 32px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-primary);
+  color: black;
+  font-family: var(--font-family-bold);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.anon-process-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(199, 255, 0, 0.3);
+}
+
+.anon-process-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   SCROLLBAR STYLING
+   ============================================================================ */
+
+.anon-field-list::-webkit-scrollbar,
+.anon-main-section::-webkit-scrollbar {
+  width: 8px;
+}
+
+.anon-field-list::-webkit-scrollbar-track,
+.anon-main-section::-webkit-scrollbar-track {
+  background: rgba(174, 170, 151, 0.1);
+  border-radius: 4px;
+}
+
+.anon-field-list::-webkit-scrollbar-thumb,
+.anon-main-section::-webkit-scrollbar-thumb {
+  background: rgba(174, 170, 151, 0.3);
+  border-radius: 4px;
+}
+
+.anon-field-list::-webkit-scrollbar-thumb:hover,
+.anon-main-section::-webkit-scrollbar-thumb:hover {
+  background: rgba(174, 170, 151, 0.5);
+}
